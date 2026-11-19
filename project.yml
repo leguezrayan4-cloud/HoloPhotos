@@ -1,0 +1,14 @@
+name: Holophoto
+options:
+  bundleIdPrefix: com.holophoto
+targets:
+  Holophoto:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Holophoto]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.holophoto.app
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
