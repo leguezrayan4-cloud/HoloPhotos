@@ -6,7 +6,7 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
-    sources: [Holophoto]
+    sources: [ContentView.swift, HolophotoApp.swift]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.holophoto.app
