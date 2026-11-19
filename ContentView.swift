@@ -8,7 +8,7 @@ struct ContentView: View {
             List(photos, id: \.self) { album in
                 Text(album)
             }
-            .navigationTitle("Holophoto")
+            .navigationTitle("HoloPhotos")
         }
     }
 }
