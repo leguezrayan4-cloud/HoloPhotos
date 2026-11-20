@@ -20,11 +20,30 @@ struct ThumbnailView: View {
                 }
             }
             .clipped()
+            .overlay(alignment: .bottomLeading) {
+                videoBadge
+            }
             .overlay(alignment: .bottomTrailing) {
                 badge
             }
             .opacity(isSelecting && isSelected ? 0.7 : 1)
             .onAppear(perform: load)
+    }
+
+    @ViewBuilder
+    private var videoBadge: some View {
+        if asset.mediaType == .video {
+            Text(durationText)
+                .font(.caption2.bold())
+                .foregroundStyle(.white)
+                .shadow(radius: 2)
+                .padding(4)
+        }
+    }
+
+    private var durationText: String {
+        let total = Int(asset.duration)
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     @ViewBuilder
