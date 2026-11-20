@@ -2,14 +2,17 @@ import Photos
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var library = PhotoLibrary()
+    @EnvironmentObject private var library: PhotoLibrary
+    @AppStorage("gridSize") private var gridSize = 100
     @State private var path: [PHAsset] = []
     @State private var isSelecting = false
     @State private var selected = Set<String>()
     @State private var showAlbumPicker = false
     @State private var showDeleteConfirm = false
 
-    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: CGFloat(gridSize)), spacing: 2)]
+    }
 
     private var selectedAssets: [PHAsset] {
         library.assets.filter { selected.contains($0.localIdentifier) }
@@ -24,16 +27,16 @@ struct ContentView: View {
                     accessRequest
                 }
             }
-            .navigationTitle(isSelecting ? "\(selected.count) sélectionnée(s)" : "Photos")
+            .navigationTitle(isSelecting ? (selected.isEmpty ? "Sélectionner" : "\(selected.count) sélectionné(s)") : "Photos")
             .toolbar {
                 if library.authorized {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button(isSelecting ? "OK" : "Sélectionner") {
-                            if isSelecting {
-                                finishSelection()
-                            } else {
-                                isSelecting = true
+                        if isSelecting {
+                            Button { finishSelection() } label: {
+                                Image(systemName: "xmark")
                             }
+                        } else {
+                            Button("Sélectionner") { isSelecting = true }
                         }
                     }
                 }
@@ -42,19 +45,30 @@ struct ContentView: View {
                         Button { copySelected() } label: {
                             Image(systemName: "doc.on.doc")
                         }
+                        .disabled(selected.isEmpty)
+
                         Button { duplicateSelected() } label: {
                             Image(systemName: "plus.square.on.square")
                         }
+                        .disabled(selected.isEmpty)
+
                         Button { hideSelected() } label: {
                             Image(systemName: "eye.slash")
                         }
+                        .disabled(selected.isEmpty)
+
                         Button { showAlbumPicker = true } label: {
                             Image(systemName: "rectangle.stack.badge.plus")
                         }
+                        .disabled(selected.isEmpty)
+
                         Spacer()
+
                         Button(role: .destructive) { showDeleteConfirm = true } label: {
                             Image(systemName: "trash")
                         }
+                        .tint(.red)
+                        .disabled(selected.isEmpty)
                     }
                 }
             }
@@ -69,7 +83,7 @@ struct ContentView: View {
             }
         }
         .confirmationDialog(
-            "Supprimer \(selected.count) photo(s) ?",
+            "Supprimer \(selected.count) élément(s) ?",
             isPresented: $showDeleteConfirm,
             titleVisibility: .visible
         ) {
@@ -77,7 +91,7 @@ struct ContentView: View {
                 library.delete(selectedAssets) { finishSelection() }
             }
         } message: {
-            Text("Elles iront dans « Supprimés récemment » pendant 30 jours.")
+            Text("Ils iront dans « Supprimés récemment » pendant 30 jours.")
         }
     }
 
@@ -100,11 +114,15 @@ struct ContentView: View {
                 }
             }
         }
+        .refreshable {
+            library.reload()
+            try? await Task.sleep(nanoseconds: 700_000_000)
+        }
     }
 
     private var accessRequest: some View {
         VStack(spacing: 16) {
-            Text("HoloPhotos a besoin d'accéder à tes photos.")
+            Text("HoloPhotos a besoin d'accéder à tes photos et vidéos.")
                 .multilineTextAlignment(.center)
             Button("Autoriser l'accès") {
                 library.requestAccess()
