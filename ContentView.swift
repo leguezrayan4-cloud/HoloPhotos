@@ -3,15 +3,16 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var library: PhotoLibrary
-    @AppStorage("gridSize") private var gridSize = 100
+    @AppStorage("columns") private var columns = 4
+    @State private var pinchStart: Int?
     @State private var path: [PHAsset] = []
     @State private var isSelecting = false
     @State private var selected = Set<String>()
     @State private var showAlbumPicker = false
     @State private var showDeleteConfirm = false
 
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: CGFloat(gridSize)), spacing: 2)]
+    private var gridColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 2), count: columns)
     }
 
     private var selectedAssets: [PHAsset] {
@@ -76,6 +77,7 @@ struct ContentView: View {
                 FullPhotoView(asset: asset, library: library)
             }
         }
+        .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
         .onAppear { library.checkAccess() }
         .sheet(isPresented: $showAlbumPicker) {
             AlbumPicker(library: library, assets: selectedAssets) {
@@ -97,7 +99,7 @@ struct ContentView: View {
 
     private var grid: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 2) {
+            LazyVGrid(columns: gridColumns, spacing: 2) {
                 ForEach(library.assets, id: \.localIdentifier) { asset in
                     ThumbnailView(
                         asset: asset,
@@ -114,10 +116,25 @@ struct ContentView: View {
                 }
             }
         }
+        .gesture(pinchGesture)
         .refreshable {
             library.reload()
             try? await Task.sleep(nanoseconds: 700_000_000)
         }
+    }
+
+    // Écarter les doigts = moins de colonnes (plus grand), rapprocher = plus de colonnes (plus petit)
+    private var pinchGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                if pinchStart == nil { pinchStart = columns }
+                let base = pinchStart ?? columns
+                let newCount = Int((Double(base) / Double(scale)).rounded())
+                columns = min(max(newCount, 1), 8)
+            }
+            .onEnded { _ in
+                pinchStart = nil
+            }
     }
 
     private var accessRequest: some View {
