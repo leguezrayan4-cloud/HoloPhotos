@@ -19,7 +19,6 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
         PHPhotoLibrary.shared().unregisterChangeObserver(self)
     }
 
-    // Appelé par iOS dès qu'une photo ou vidéo est ajoutée, modifiée ou supprimée
     func photoLibraryDidChange(_ changeInstance: PHChange) {
         let autoRefresh = UserDefaults.standard.object(forKey: "autoRefresh") as? Bool ?? true
         guard autoRefresh else { return }
@@ -71,7 +70,6 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
         }
     }
 
-    // Ne concerne que les photos : les vidéos ne se copient pas dans le presse-papiers ici
     func loadImages(_ assets: [PHAsset], completion: @escaping ([UIImage]) -> Void) {
         let photosOnly = assets.filter { $0.mediaType == .image }
         let options = PHImageRequestOptions()
@@ -112,13 +110,20 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
         }, done: done)
     }
 
+    func unhide(_ assets: [PHAsset], done: @escaping () -> Void) {
+        apply({
+            for asset in assets {
+                PHAssetChangeRequest(for: asset).isHidden = false
+            }
+        }, done: done)
+    }
+
     func delete(_ assets: [PHAsset], done: @escaping () -> Void) {
         apply({
             PHAssetChangeRequest.deleteAssets(assets as NSArray)
         }, done: done)
     }
 
-    // Les doublons ne sont faits que pour les photos
     func duplicate(_ assets: [PHAsset], done: @escaping () -> Void) {
         loadImages(assets) { images in
             PHPhotoLibrary.shared().performChanges({
@@ -148,6 +153,23 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
             )
             request.addAssets(assets as NSArray)
         }, done: done)
+    }
+
+    // Sauvegarde une image éditée (rotation / luminosité / recadrage)
+    func saveEditedImage(_ image: UIImage, replacing asset: PHAsset?, done: @escaping () -> Void) {
+        guard let data = image.jpegData(compressionQuality: 0.95) else {
+            done()
+            return
+        }
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
+            if let asset {
+                PHAssetChangeRequest.deleteAssets([asset] as NSArray)
+            }
+        }) { _, _ in
+            self.reload()
+            DispatchQueue.main.async(execute: done)
+        }
     }
 
     private func apply(_ changes: @escaping () -> Void, done: @escaping () -> Void) {

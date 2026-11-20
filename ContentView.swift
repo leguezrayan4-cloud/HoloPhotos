@@ -16,12 +16,15 @@ struct ContentView: View {
     @State private var showAlbumPicker = false
     @State private var showDeleteConfirm = false
     @State private var showCollections = false
+    @State private var dragSelectStart: CGPoint?
+    @State private var dragSelectCurrent: CGPoint?
+    @State private var longPressScale: [String: CGFloat] = [:]
+    @State private var trashBubbleVisible = false
 
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 2), count: columns)
     }
 
-    // Plus la grille est serrée, plus la vignette doit être nette
     private var thumbnailPixels: CGFloat {
         columns <= 2 ? 600 : (columns <= 4 ? 300 : 220)
     }
@@ -57,16 +60,13 @@ struct ContentView: View {
         .sheet(isPresented: $showCollections) {
             CollectionsView(library: library)
         }
-        .confirmationDialog(
-            "Supprimer \(selected.count) élément(s) ?",
-            isPresented: $showDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Supprimer", role: .destructive) {
-                library.delete(selectedAssets) { finishSelection() }
+        .overlay(alignment: .bottomTrailing) {
+            if trashBubbleVisible {
+                deleteBubble
+                    .transition(.scale.combined(with: .opacity))
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 70)
             }
-        } message: {
-            Text("Ils iront dans « Supprimés récemment » pendant 30 jours.")
         }
     }
 
@@ -114,7 +114,11 @@ struct ContentView: View {
 
                 Spacer()
 
-                Button(role: .destructive) { showDeleteConfirm = true } label: {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        trashBubbleVisible = true
+                    }
+                } label: {
                     Image(systemName: "trash")
                 }
                 .tint(.red)
@@ -123,35 +127,136 @@ struct ContentView: View {
         }
     }
 
-    private var grid: some View {
-        ScrollView {
-            LazyVGrid(columns: gridColumns, spacing: 2) {
-                ForEach(Array(library.assets.enumerated()), id: \.element.localIdentifier) { index, asset in
-                    ThumbnailView(
-                        asset: asset,
-                        targetPixels: thumbnailPixels,
-                        isSelecting: isSelecting,
-                        isSelected: selected.contains(asset.localIdentifier)
-                    )
-                    .onTapGesture {
-                        if isSelecting {
-                            toggle(asset)
-                        } else {
-                            viewer = ViewerItem(index: index)
-                        }
-                    }
+    private var deleteBubble: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            HStack(spacing: 12) {
+                Button {
+                    withAnimation { trashBubbleVisible = false }
+                } label: {
+                    Text("Annuler")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                }
+
+                Button {
+                    withAnimation { trashBubbleVisible = false }
+                    library.delete(selectedAssets) { finishSelection() }
+                } label: {
+                    Text("Supprimer")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.red)
+                        .clipShape(Capsule())
                 }
             }
+            .padding(10)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+
+            // Petite flèche vers la poubelle
+            Image(systemName: "arrowtriangle.down.fill")
+                .font(.caption)
+                .foregroundStyle(.ultraThinMaterial)
+                .offset(x: -8, y: -2)
+        }
+    }
+
+    private var grid: some View {
+        GeometryReader { geo in
+            ScrollView {
+                LazyVGrid(columns: gridColumns, spacing: 2) {
+                    ForEach(Array(library.assets.enumerated()), id: \.element.localIdentifier) { index, asset in
+                        let id = asset.localIdentifier
+                        ThumbnailView(
+                            asset: asset,
+                            targetPixels: thumbnailPixels,
+                            isSelecting: isSelecting,
+                            isSelected: selected.contains(id)
+                        )
+                        .scaleEffect(longPressScale[id] ?? 1)
+                        .onTapGesture {
+                            if isSelecting {
+                                toggle(asset)
+                            } else {
+                                viewer = ViewerItem(index: index)
+                            }
+                        }
+                        .onLongPressGesture(minimumDuration: 0.4, pressing: { pressing in
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.55)) {
+                                longPressScale[id] = pressing ? 1.12 : 1.0
+                            }
+                        }) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                longPressScale[id] = 1.0
+                                if !isSelecting {
+                                    isSelecting = true
+                                }
+                                selected.insert(id)
+                            }
+                            // Retour haptique léger
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        }
+                        .background(
+                            GeometryReader { cellGeo in
+                                Color.clear
+                                    .preference(
+                                        key: CellFrameKey.self,
+                                        value: [id: cellGeo.frame(in: .named("grid"))]
+                                    )
+                            }
+                        )
+                    }
+                }
+                .coordinateSpace(name: "grid")
+                .onPreferenceChange(CellFrameKey.self) { frames in
+                    cellFrames = frames
+                }
+            }
+            .gesture(isSelecting ? dragSelectGesture : nil)
         }
         .gesture(pinchGesture)
         .refreshable {
             library.reload()
-            // Minimum visible même si le chargement est immédiat
             try? await Task.sleep(nanoseconds: 600_000_000)
         }
     }
 
-    // Écarter les doigts = moins de colonnes (plus grand), rapprocher = plus de colonnes (plus petit)
+    @State private var cellFrames: [String: CGRect] = [:]
+
+    // Sélection par glissement (comme dans Photos / la vidéo)
+    private var dragSelectGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                if dragSelectStart == nil {
+                    dragSelectStart = value.startLocation
+                }
+                dragSelectCurrent = value.location
+                updateDragSelection()
+            }
+            .onEnded { _ in
+                dragSelectStart = nil
+                dragSelectCurrent = nil
+            }
+    }
+
+    private func updateDragSelection() {
+        guard let start = dragSelectStart, let current = dragSelectCurrent else { return }
+        let rect = CGRect(
+            x: min(start.x, current.x),
+            y: min(start.y, current.y),
+            width: abs(current.x - start.x),
+            height: abs(current.y - start.y)
+        )
+        for (id, frame) in cellFrames {
+            if frame.intersects(rect) {
+                selected.insert(id)
+            }
+        }
+    }
+
     private var pinchGesture: some Gesture {
         MagnificationGesture()
             .onChanged { scale in
@@ -188,6 +293,7 @@ struct ContentView: View {
     private func finishSelection() {
         selected.removeAll()
         isSelecting = false
+        trashBubbleVisible = false
     }
 
     private func copySelected() {
@@ -202,6 +308,13 @@ struct ContentView: View {
 
     private func hideSelected() {
         library.hide(selectedAssets) { finishSelection() }
+    }
+}
+
+private struct CellFrameKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
 }
 

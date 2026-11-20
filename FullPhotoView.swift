@@ -1,6 +1,8 @@
 import AVKit
 import Photos
 import SwiftUI
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 struct PhotoViewer: View {
     let assets: [PHAsset]
@@ -12,6 +14,7 @@ struct PhotoViewer: View {
     @State private var showInfo = false
     @State private var showAlbumPicker = false
     @State private var showDelete = false
+    @State private var showEdit = false
     @Environment(\.dismiss) private var dismiss
 
     init(assets: [PHAsset], library: PhotoLibrary, startIndex: Int) {
@@ -87,6 +90,13 @@ struct PhotoViewer: View {
                         Button { hideCurrent() } label: {
                             Label("Masquer", systemImage: "eye.slash")
                         }
+
+                        Button {
+                            showEdit = true
+                        } label: {
+                            Label("Retoucher", systemImage: "slider.horizontal.3")
+                        }
+                        .disabled(currentAsset?.mediaType != .image)
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -114,6 +124,13 @@ struct PhotoViewer: View {
         .sheet(isPresented: $showAlbumPicker) {
             if let asset = currentAsset {
                 AlbumPicker(library: library, assets: [asset]) {}
+            }
+        }
+        .fullScreenCover(isPresented: $showEdit) {
+            if let asset = currentAsset {
+                PhotoEditView(asset: asset, library: library) {
+                    showEdit = false
+                }
             }
         }
         .confirmationDialog("Supprimer cet élément ?", isPresented: $showDelete, titleVisibility: .visible) {
@@ -236,6 +253,172 @@ struct PhotoPage: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Retouches (luminosité, rotation, recadrage simple)
+
+struct PhotoEditView: View {
+    let asset: PHAsset
+    @ObservedObject var library: PhotoLibrary
+    let onDone: () -> Void
+
+    @State private var original: UIImage?
+    @State private var preview: UIImage?
+    @State private var brightness: Double = 0
+    @State private var rotation: Angle = .zero
+    @State private var cropScale: CGFloat = 1
+    @State private var saving = false
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if let preview {
+                    Image(uiImage: preview)
+                        .resizable()
+                        .scaledToFit()
+                        .rotationEffect(rotation)
+                        .scaleEffect(cropScale)
+                        .clipped()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black)
+                } else {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+
+                VStack(spacing: 16) {
+                    // Luminosité
+                    HStack {
+                        Image(systemName: "sun.min")
+                        Slider(value: $brightness, in: -0.5...0.5, step: 0.01)
+                            .onChange(of: brightness) { _, _ in applyFilters() }
+                        Image(systemName: "sun.max")
+                    }
+
+                    // Rotation
+                    HStack(spacing: 20) {
+                        Button {
+                            withAnimation {
+                                rotation -= .degrees(90)
+                            }
+                            applyFilters()
+                        } label: {
+                            Label("−90°", systemImage: "rotate.left")
+                        }
+
+                        Button {
+                            withAnimation {
+                                rotation += .degrees(90)
+                            }
+                            applyFilters()
+                        } label: {
+                            Label("+90°", systemImage: "rotate.right")
+                        }
+
+                        Button {
+                            withAnimation {
+                                cropScale = cropScale == 1 ? 0.85 : 1
+                            }
+                        } label: {
+                            Label(cropScale == 1 ? "Recadrer" : "Annuler crop", systemImage: "crop")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding()
+                .background(.bar)
+            }
+            .navigationTitle("Retoucher")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Annuler") { dismiss(); onDone() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Enregistrer") {
+                        save()
+                    }
+                    .disabled(preview == nil || saving)
+                }
+            }
+            .onAppear(perform: load)
+        }
+    }
+
+    private func load() {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        PHImageManager.default().requestImage(
+            for: asset,
+            targetSize: PHImageManagerMaximumSize,
+            contentMode: .aspectFit,
+            options: options
+        ) { result, _ in
+            if let result {
+                DispatchQueue.main.async {
+                    original = result
+                    preview = result
+                }
+            }
+        }
+    }
+
+    private func applyFilters() {
+        guard let original else { return }
+        let ciImage = CIImage(image: original)
+        guard var input = ciImage else { return }
+
+        let filter = CIFilter.colorControls()
+        filter.inputImage = input
+        filter.brightness = Float(brightness)
+        if let output = filter.outputImage {
+            input = output
+        }
+
+        // Rotation via transform
+        let radians = CGFloat(rotation.radians)
+        if abs(radians) > 0.01 {
+            input = input.transformed(by: CGAffineTransform(rotationAngle: radians))
+        }
+
+        let context = CIContext()
+        if let cg = context.createCGImage(input, from: input.extent) {
+            preview = UIImage(cgImage: cg)
+        }
+    }
+
+    private func save() {
+        guard let image = preview else { return }
+        saving = true
+        // On applique aussi le scale de crop approximatif
+        let final: UIImage
+        if cropScale < 1 {
+            let size = image.size
+            let cropW = size.width * cropScale
+            let cropH = size.height * cropScale
+            let rect = CGRect(
+                x: (size.width - cropW) / 2,
+                y: (size.height - cropH) / 2,
+                width: cropW,
+                height: cropH
+            )
+            if let cg = image.cgImage?.cropping(to: rect) {
+                final = UIImage(cgImage: cg)
+            } else {
+                final = image
+            }
+        } else {
+            final = image
+        }
+
+        library.saveEditedImage(final, replacing: asset) {
+            saving = false
+            dismiss()
+            onDone()
         }
     }
 }

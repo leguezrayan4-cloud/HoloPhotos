@@ -76,16 +76,27 @@ struct Provider: Identifiable {
 
 let providers: [Provider] = [
     Provider(id: "ollama", name: "Ollama (PC local)", models: [
-        ModelOption(id: "ollama:auto", name: "Automatique")
+        ModelOption(id: "ollama:auto", name: "Automatique"),
+        ModelOption(id: "ollama:llama3.2", name: "Llama 3.2"),
+        ModelOption(id: "ollama:llava", name: "LLaVA (vision)")
     ]),
     Provider(id: "claude", name: "Claude", models: [
         ModelOption(id: "claude:claude-opus-5-5", name: "Claude Opus 5.5"),
         ModelOption(id: "claude:claude-sonnet-5-5", name: "Claude Sonnet 5.5"),
         ModelOption(id: "claude:claude-haiku-5-5", name: "Claude Haiku 5.5")
     ]),
-    Provider(id: "chatgpt", name: "ChatGPT", models: []),
-    Provider(id: "gemini", name: "Gemini", models: []),
-    Provider(id: "mistral", name: "Mistral", models: [])
+    Provider(id: "chatgpt", name: "ChatGPT", models: [
+        ModelOption(id: "chatgpt:gpt-4o", name: "GPT-4o"),
+        ModelOption(id: "chatgpt:gpt-4o-mini", name: "GPT-4o mini")
+    ]),
+    Provider(id: "gemini", name: "Gemini", models: [
+        ModelOption(id: "gemini:gemini-2.0-flash", name: "Gemini 2.0 Flash"),
+        ModelOption(id: "gemini:gemini-1.5-pro", name: "Gemini 1.5 Pro")
+    ]),
+    Provider(id: "mistral", name: "Mistral", models: [
+        ModelOption(id: "mistral:mistral-large", name: "Mistral Large"),
+        ModelOption(id: "mistral:pixtral", name: "Pixtral (vision)")
+    ])
 ]
 
 struct AIView: View {
@@ -216,7 +227,7 @@ struct AIView: View {
                             Image(systemName: "sparkles")
                                 .font(.system(size: 40))
                                 .foregroundStyle(.purple)
-                            Text("Pose une question sur ta galerie ou sur HoloPhotos.")
+                            Text("Pose une question sur ta galerie, demande une organisation, ou des actions sur tes photos.")
                                 .multilineTextAlignment(.center)
                                 .foregroundStyle(.secondary)
                         }
@@ -311,7 +322,7 @@ struct AIView: View {
             return
         }
         guard choice.hasPrefix("ollama:") else {
-            errorText = "Ce fournisseur arrive dans la prochaine version. Choisis Automatique ou Ollama."
+            errorText = "Ce fournisseur (clé API) arrive bientôt. Pour l'instant utilise Automatique ou Ollama sur ton PC."
             return
         }
         guard quota.remaining > 0 else {
