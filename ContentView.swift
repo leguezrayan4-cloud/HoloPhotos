@@ -1,11 +1,16 @@
 import Photos
 import SwiftUI
 
+struct ViewerItem: Identifiable {
+    let id = UUID()
+    let index: Int
+}
+
 struct ContentView: View {
     @EnvironmentObject private var library: PhotoLibrary
     @AppStorage("columns") private var columns = 4
     @State private var pinchStart: Int?
-    @State private var path: [PHAsset] = []
+    @State private var viewer: ViewerItem?
     @State private var isSelecting = false
     @State private var selected = Set<String>()
     @State private var showAlbumPicker = false
@@ -15,12 +20,17 @@ struct ContentView: View {
         Array(repeating: GridItem(.flexible(), spacing: 2), count: columns)
     }
 
+    // Plus la grille est serrée, plus la vignette doit être nette
+    private var thumbnailPixels: CGFloat {
+        columns <= 2 ? 600 : (columns <= 4 ? 300 : 220)
+    }
+
     private var selectedAssets: [PHAsset] {
         library.assets.filter { selected.contains($0.localIdentifier) }
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack {
             Group {
                 if library.authorized {
                     grid
@@ -30,55 +40,14 @@ struct ContentView: View {
             }
             .navigationTitle(isSelecting ? (selected.isEmpty ? "Sélectionner" : "\(selected.count) sélectionné(s)") : "Photos")
             .toolbar {
-                if library.authorized {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if isSelecting {
-                            Button { finishSelection() } label: {
-                                Image(systemName: "xmark")
-                            }
-                        } else {
-                            Button("Sélectionner") { isSelecting = true }
-                        }
-                    }
-                }
-                if isSelecting {
-                    ToolbarItemGroup(placement: .bottomBar) {
-                        Button { copySelected() } label: {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        .disabled(selected.isEmpty)
-
-                        Button { duplicateSelected() } label: {
-                            Image(systemName: "plus.square.on.square")
-                        }
-                        .disabled(selected.isEmpty)
-
-                        Button { hideSelected() } label: {
-                            Image(systemName: "eye.slash")
-                        }
-                        .disabled(selected.isEmpty)
-
-                        Button { showAlbumPicker = true } label: {
-                            Image(systemName: "rectangle.stack.badge.plus")
-                        }
-                        .disabled(selected.isEmpty)
-
-                        Spacer()
-
-                        Button(role: .destructive) { showDeleteConfirm = true } label: {
-                            Image(systemName: "trash")
-                        }
-                        .tint(.red)
-                        .disabled(selected.isEmpty)
-                    }
-                }
-            }
-            .navigationDestination(for: PHAsset.self) { asset in
-                FullPhotoView(asset: asset, library: library)
+                toolbarContent
             }
         }
         .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
         .onAppear { library.checkAccess() }
+        .fullScreenCover(item: $viewer) { item in
+            PhotoViewer(assets: library.assets, library: library, startIndex: item.index)
+        }
         .sheet(isPresented: $showAlbumPicker) {
             AlbumPicker(library: library, assets: selectedAssets) {
                 finishSelection()
@@ -97,12 +66,59 @@ struct ContentView: View {
         }
     }
 
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if library.authorized {
+            ToolbarItem(placement: .topBarTrailing) {
+                if isSelecting {
+                    Button { finishSelection() } label: {
+                        Image(systemName: "xmark")
+                    }
+                } else {
+                    Button("Sélectionner") { isSelecting = true }
+                }
+            }
+        }
+        if isSelecting {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button { copySelected() } label: {
+                    Image(systemName: "doc.on.doc")
+                }
+                .disabled(selected.isEmpty)
+
+                Button { duplicateSelected() } label: {
+                    Image(systemName: "plus.square.on.square")
+                }
+                .disabled(selected.isEmpty)
+
+                Button { hideSelected() } label: {
+                    Image(systemName: "eye.slash")
+                }
+                .disabled(selected.isEmpty)
+
+                Button { showAlbumPicker = true } label: {
+                    Image(systemName: "rectangle.stack.badge.plus")
+                }
+                .disabled(selected.isEmpty)
+
+                Spacer()
+
+                Button(role: .destructive) { showDeleteConfirm = true } label: {
+                    Image(systemName: "trash")
+                }
+                .tint(.red)
+                .disabled(selected.isEmpty)
+            }
+        }
+    }
+
     private var grid: some View {
         ScrollView {
             LazyVGrid(columns: gridColumns, spacing: 2) {
-                ForEach(library.assets, id: \.localIdentifier) { asset in
+                ForEach(Array(library.assets.enumerated()), id: \.element.localIdentifier) { index, asset in
                     ThumbnailView(
                         asset: asset,
+                        targetPixels: thumbnailPixels,
                         isSelecting: isSelecting,
                         isSelected: selected.contains(asset.localIdentifier)
                     )
@@ -110,7 +126,7 @@ struct ContentView: View {
                         if isSelecting {
                             toggle(asset)
                         } else {
-                            path.append(asset)
+                            viewer = ViewerItem(index: index)
                         }
                     }
                 }
@@ -119,7 +135,8 @@ struct ContentView: View {
         .gesture(pinchGesture)
         .refreshable {
             library.reload()
-            try? await Task.sleep(nanoseconds: 700_000_000)
+            // Minimum visible même si le chargement est immédiat
+            try? await Task.sleep(nanoseconds: 600_000_000)
         }
     }
 
