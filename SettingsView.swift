@@ -48,6 +48,7 @@ struct GeneralSettingsView: View {
 
 struct AISettingsView: View {
     @AppStorage("aiMode") private var aiMode = "suggestion"
+    @AppStorage("quotaShowRemaining") private var showRemaining = false
 
     var body: some View {
         List {
@@ -59,6 +60,14 @@ struct AISettingsView: View {
             } footer: {
                 Text("Suggestion : l'IA propose, tu valides. Automatique : l'IA range seule, uniquement quand l'app est ouverte.")
             }
+
+            Section {
+                Toggle("Afficher le restant plutôt que l'utilisé", isOn: $showRemaining)
+            } header: {
+                Text("Quota")
+            } footer: {
+                Text("Le cercle se remplit avec les messages utilisés. Ce réglage change seulement le pourcentage affiché.")
+            }
         }
         .navigationTitle("Intelligence artificielle")
     }
@@ -67,7 +76,7 @@ struct AISettingsView: View {
 struct AboutView: View {
     var body: some View {
         List {
-            LabeledContent("Version", value: "4")
+            LabeledContent("Version", value: "5")
         }
         .navigationTitle("À propos")
     }
