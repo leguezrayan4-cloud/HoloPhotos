@@ -1,38 +1,133 @@
 import Photos
 import SwiftUI
 
-@MainActor
+private final class ImageCollector {
+    var images: [UIImage] = []
+}
+
 final class PhotoLibrary: ObservableObject {
     @Published var assets: [PHAsset] = []
+    @Published var albums: [PHAssetCollection] = []
     @Published var authorized = false
 
     func checkAccess() {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if status == .authorized || status == .limited {
             authorized = true
-            loadAssets()
+            reload()
         }
     }
 
     func requestAccess() {
         PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] status in
-            Task { @MainActor in
+            DispatchQueue.main.async {
                 let ok = (status == .authorized || status == .limited)
                 self?.authorized = ok
-                if ok { self?.loadAssets() }
+                if ok { self?.reload() }
             }
         }
     }
 
-    func loadAssets() {
+    func reload() {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        let result = PHAsset.fetchAssets(with: .image, options: options)
-        var list: [PHAsset] = []
-        list.reserveCapacity(result.count)
-        result.enumerateObjects { asset, _, _ in
-            list.append(asset)
+        var photos: [PHAsset] = []
+        PHAsset.fetchAssets(with: .image, options: options).enumerateObjects { asset, _, _ in
+            photos.append(asset)
         }
-        assets = list
+        var albums: [PHAssetCollection] = []
+        PHAssetCollection.fetchAssetCollections(with: .album, subtype: .albumRegular, options: nil)
+            .enumerateObjects { collection, _, _ in
+                albums.append(collection)
+            }
+        let photoList = photos
+        let albumList = albums
+        DispatchQueue.main.async {
+            self.assets = photoList
+            self.albums = albumList
+        }
+    }
+
+    func loadImages(_ assets: [PHAsset], completion: @escaping ([UIImage]) -> Void) {
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        let collector = ImageCollector()
+        let group = DispatchGroup()
+        for asset in assets {
+            group.enter()
+            PHImageManager.default().requestImage(
+                for: asset,
+                targetSize: PHImageManagerMaximumSize,
+                contentMode: .default,
+                options: options
+            ) { image, _ in
+                DispatchQueue.main.async {
+                    if let image { collector.images.append(image) }
+                    group.leave()
+                }
+            }
+        }
+        group.notify(queue: .main) {
+            completion(collector.images)
+        }
+    }
+
+    func setFavorite(_ asset: PHAsset, _ value: Bool) {
+        apply({
+            PHAssetChangeRequest(for: asset).isFavorite = value
+        }, done: {})
+    }
+
+    func hide(_ assets: [PHAsset], done: @escaping () -> Void) {
+        apply({
+            for asset in assets {
+                PHAssetChangeRequest(for: asset).isHidden = true
+            }
+        }, done: done)
+    }
+
+    func delete(_ assets: [PHAsset], done: @escaping () -> Void) {
+        apply({
+            PHAssetChangeRequest.deleteAssets(assets as NSArray)
+        }, done: done)
+    }
+
+    func duplicate(_ assets: [PHAsset], done: @escaping () -> Void) {
+        loadImages(assets) { images in
+            PHPhotoLibrary.shared().performChanges({
+                for image in images {
+                    guard let data = image.jpegData(compressionQuality: 0.95) else { continue }
+                    PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
+                }
+            }) { _, _ in
+                self.reload()
+                DispatchQueue.main.async(execute: done)
+            }
+        }
+    }
+
+    func add(_ assets: [PHAsset], to album: PHAssetCollection, done: @escaping () -> Void) {
+        apply({
+            guard let request = PHAssetCollectionChangeRequest(for: album) else { return }
+            request.addAssets(assets as NSArray)
+        }, done: done)
+    }
+
+    func createAlbum(named name: String, adding assets: [PHAsset], done: @escaping () -> Void) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        apply({
+            let request = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(
+                withTitle: trimmed.isEmpty ? "Nouvel album" : trimmed
+            )
+            request.addAssets(assets as NSArray)
+        }, done: done)
+    }
+
+    private func apply(_ changes: @escaping () -> Void, done: @escaping () -> Void) {
+        PHPhotoLibrary.shared().performChanges(changes) { _, _ in
+            self.reload()
+            DispatchQueue.main.async(execute: done)
+        }
     }
 }
