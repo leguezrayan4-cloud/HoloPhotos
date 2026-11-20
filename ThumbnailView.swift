@@ -6,6 +6,7 @@ struct ThumbnailView: View {
     var targetPixels: CGFloat = 220
     var isSelecting = false
     var isSelected = false
+    var caption: String? = nil
     @State private var image: UIImage?
 
     var body: some View {
@@ -28,6 +29,9 @@ struct ThumbnailView: View {
             .overlay(alignment: .bottomTrailing) {
                 badge
             }
+            .overlay(alignment: .topTrailing) {
+                captionView
+            }
             .opacity(isSelecting && isSelected ? 0.7 : 1)
             .onAppear(perform: load)
     }
@@ -39,6 +43,20 @@ struct ThumbnailView: View {
                 .font(.caption2.bold())
                 .foregroundStyle(.white)
                 .shadow(radius: 2)
+                .padding(4)
+        }
+    }
+
+    @ViewBuilder
+    private var captionView: some View {
+        if let caption {
+            Text(caption)
+                .font(.caption2.bold())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.black.opacity(0.55))
+                .clipShape(Capsule())
                 .padding(4)
         }
     }

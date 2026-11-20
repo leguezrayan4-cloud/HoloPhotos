@@ -14,7 +14,6 @@ struct ContentView: View {
     @State private var isSelecting = false
     @State private var selected = Set<String>()
     @State private var showAlbumPicker = false
-    @State private var showDeleteConfirm = false
     @State private var showCollections = false
     @State private var dragSelectStart: CGPoint?
     @State private var dragSelectCurrent: CGPoint?
@@ -49,6 +48,10 @@ struct ContentView: View {
         }
         .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
         .onAppear { library.checkAccess() }
+        .onChange(of: library.changeToken) { _, _ in
+            let ids = Set(library.assets.map { $0.localIdentifier })
+            selected = selected.filter { ids.contains($0) }
+        }
         .fullScreenCover(item: $viewer) { item in
             PhotoViewer(assets: library.assets, library: library, startIndex: item.index)
         }
@@ -140,7 +143,7 @@ struct ContentView: View {
 
                 Button {
                     withAnimation { trashBubbleVisible = false }
-                    library.delete(selectedAssets) { finishSelection() }
+                    library.trash(selectedAssets) { finishSelection() }
                 } label: {
                     Text("Supprimer")
                         .font(.subheadline.weight(.semibold))
@@ -215,10 +218,12 @@ struct ContentView: View {
                     cellFrames = frames
                 }
             }
-            .gesture(isSelecting ? dragSelectGesture : nil)
+            .gesture(dragSelectGesture, including: isSelecting ? .all : .none)
         }
         .gesture(pinchGesture)
         .refreshable {
+            // Pas d'actualisation pendant la sélection
+            guard !isSelecting else { return }
             library.reload()
             try? await Task.sleep(nanoseconds: 600_000_000)
         }

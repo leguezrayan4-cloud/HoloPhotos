@@ -15,31 +15,6 @@ func smartAssets(_ subtype: PHAssetCollectionSubtype) -> [PHAsset] {
     return list
 }
 
-func hiddenAssets() -> [PHAsset] {
-    let options = PHFetchOptions()
-    options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-    options.includeHiddenAssets = true
-    options.predicate = NSPredicate(format: "isHidden == YES")
-    var list: [PHAsset] = []
-    PHAsset.fetchAssets(with: options).enumerateObjects { asset, _, _ in
-        list.append(asset)
-    }
-    return list
-}
-
-func recentlyDeletedAssets() -> [PHAsset] {
-    guard let collection = PHAssetCollection.fetchAssetCollections(
-        with: .smartAlbum, subtype: PHAssetCollectionSubtype(rawValue: 1_000_000_201)!, options: nil
-    ).firstObject else { return [] }
-    let options = PHFetchOptions()
-    options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-    var list: [PHAsset] = []
-    PHAsset.fetchAssets(in: collection, options: options).enumerateObjects { asset, _, _ in
-        list.append(asset)
-    }
-    return list
-}
-
 struct CollectionsView: View {
     @ObservedObject var library: PhotoLibrary
     @Environment(\.dismiss) private var dismiss
@@ -49,19 +24,19 @@ struct CollectionsView: View {
             List {
                 Section("Mes collections") {
                     NavigationLink {
-                        CollectionGrid(title: "Récents", assets: library.assets, library: library)
+                        CollectionGrid(title: "Récents", library: library) { library.assets }
                     } label: {
                         Label("Récents", systemImage: "clock")
                     }
 
                     NavigationLink {
-                        CollectionGrid(title: "Favoris", assets: smartAssets(.smartAlbumFavorites), library: library)
+                        CollectionGrid(title: "Favoris", library: library) { smartAssets(.smartAlbumFavorites) }
                     } label: {
                         Label("Favoris", systemImage: "heart")
                     }
 
                     NavigationLink {
-                        CollectionGrid(title: "Captures d'écran", assets: smartAssets(.smartAlbumScreenshots), library: library)
+                        CollectionGrid(title: "Captures d'écran", library: library) { smartAssets(.smartAlbumScreenshots) }
                     } label: {
                         HStack {
                             Label("Captures d'écran", systemImage: "camera.viewfinder")
@@ -72,7 +47,7 @@ struct CollectionsView: View {
                     }
 
                     NavigationLink {
-                        CollectionGrid(title: "Vidéos", assets: smartAssets(.smartAlbumVideos), library: library)
+                        CollectionGrid(title: "Vidéos", library: library) { smartAssets(.smartAlbumVideos) }
                     } label: {
                         Label("Vidéos", systemImage: "video")
                     }
@@ -92,13 +67,13 @@ struct CollectionsView: View {
 
                 Section("Masqués & corbeille") {
                     NavigationLink {
-                        CollectionGrid(title: "Masqués", assets: hiddenAssets(), library: library, showUnhide: true)
+                        CollectionGrid(title: "Masqués", library: library, showUnhide: true) { PhotoLibrary.hiddenAssets() }
                     } label: {
                         Label("Masqués", systemImage: "eye.slash")
                     }
 
                     NavigationLink {
-                        CollectionGrid(title: "Supprimés récemment", assets: recentlyDeletedAssets(), library: library, isRecentlyDeleted: true)
+                        CollectionGrid(title: "Supprimés récemment", library: library, isRecentlyDeleted: true) { PhotoLibrary.trashedAssets() }
                     } label: {
                         Label("Supprimés récemment", systemImage: "trash")
                     }
@@ -155,13 +130,13 @@ struct CleanUpView: View {
             }
 
             NavigationLink {
-                CollectionGrid(title: "Captures d'écran", assets: smartAssets(.smartAlbumScreenshots), library: library)
+                CollectionGrid(title: "Captures d'écran", library: library) { smartAssets(.smartAlbumScreenshots) }
             } label: {
                 Label("Captures d'écran", systemImage: "camera.viewfinder")
             }
 
             NavigationLink {
-                CollectionGrid(title: "Vidéos", assets: smartAssets(.smartAlbumVideos), library: library)
+                CollectionGrid(title: "Vidéos", library: library) { smartAssets(.smartAlbumVideos) }
             } label: {
                 Label("Vidéos", systemImage: "video")
             }
@@ -170,72 +145,27 @@ struct CleanUpView: View {
     }
 }
 
+// Un album s'ouvre directement sur sa grille, mise à jour en direct
 struct AlbumDetailView: View {
     let album: PHAssetCollection
     @ObservedObject var library: PhotoLibrary
-    @State private var assets: [PHAsset] = []
-    @State private var subAlbums: [PHAssetCollection] = []
 
     var body: some View {
-        List {
-            if !subAlbums.isEmpty {
-                Section("Dossiers & sous-albums") {
-                    ForEach(subAlbums, id: \.localIdentifier) { sub in
-                        NavigationLink {
-                            AlbumDetailView(album: sub, library: library)
-                        } label: {
-                            Label(sub.localizedTitle ?? "Album", systemImage: "folder")
-                        }
-                    }
-                }
-            }
-
-            Section("Contenu") {
-                if assets.isEmpty {
-                    Text("Album vide")
-                        .foregroundStyle(.secondary)
-                } else {
-                    NavigationLink {
-                        CollectionGrid(title: album.localizedTitle ?? "Album", assets: assets, library: library)
-                    } label: {
-                        Label("Voir les \(assets.count) éléments", systemImage: "photo.on.rectangle")
-                    }
-                }
-            }
+        CollectionGrid(title: album.localizedTitle ?? "Album", library: library, album: album) {
+            PhotoLibrary.fetchAssets(in: album)
         }
-        .navigationTitle(album.localizedTitle ?? "Album")
-        .onAppear(perform: load)
-    }
-
-    private func load() {
-        let options = PHFetchOptions()
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        var list: [PHAsset] = []
-        PHAsset.fetchAssets(in: album, options: options).enumerateObjects { asset, _, _ in
-            list.append(asset)
-        }
-        assets = list
-
-        // Support basique des dossiers / albums imbriqués via PHCollectionList
-        var subs: [PHAssetCollection] = []
-        if let list = album as? PHCollectionList {
-            let children = PHCollectionList.fetchCollections(in: list, options: nil)
-            children.enumerateObjects { collection, _, _ in
-                if let albumCollection = collection as? PHAssetCollection {
-                    subs.append(albumCollection)
-                }
-            }
-        }
-        subAlbums = subs
     }
 }
 
 struct CollectionGrid: View {
     let title: String
-    let assets: [PHAsset]
     @ObservedObject var library: PhotoLibrary
+    var album: PHAssetCollection? = nil
     var showUnhide = false
     var isRecentlyDeleted = false
+    let loader: () -> [PHAsset]
+
+    @State private var assets: [PHAsset] = []
     @State private var viewerIndex: ViewerItem?
     @State private var isSelecting = false
     @State private var selected = Set<String>()
@@ -245,8 +175,24 @@ struct CollectionGrid: View {
         assets.filter { selected.contains($0.localIdentifier) }
     }
 
+    private var viewerContext: ViewerContext {
+        if isRecentlyDeleted { return .trash }
+        if showUnhide { return .hidden }
+        if let album { return .album(album) }
+        return .normal
+    }
+
     var body: some View {
         ScrollView {
+            if isRecentlyDeleted {
+                Text(TrashStore.footer)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+            }
+
             if assets.isEmpty {
                 Text("Rien ici pour le moment.")
                     .foregroundStyle(.secondary)
@@ -258,7 +204,8 @@ struct CollectionGrid: View {
                             asset: asset,
                             targetPixels: 300,
                             isSelecting: isSelecting,
-                            isSelected: selected.contains(asset.localIdentifier)
+                            isSelected: selected.contains(asset.localIdentifier),
+                            caption: isRecentlyDeleted ? daysLeftText(asset) : nil
                         )
                         .onTapGesture {
                             if isSelecting {
@@ -287,20 +234,32 @@ struct CollectionGrid: View {
                         selected.removeAll()
                         isSelecting = false
                     }
-                } else {
+                } else if !assets.isEmpty {
                     Button("Sélectionner") { isSelecting = true }
                 }
             }
             if isSelecting {
                 ToolbarItemGroup(placement: .bottomBar) {
+                    Button("Tout") {
+                        selected = Set(assets.map { $0.localIdentifier })
+                    }
+
+                    if isRecentlyDeleted {
+                        Spacer()
+                        Button { restoreSelected() } label: {
+                            Label("Restaurer", systemImage: "arrow.uturn.backward")
+                        }
+                        .disabled(selected.isEmpty)
+                    }
+
                     if showUnhide {
-                        Button {
-                            unhideSelected()
-                        } label: {
+                        Spacer()
+                        Button { unhideSelected() } label: {
                             Image(systemName: "eye")
                         }
                         .disabled(selected.isEmpty)
                     }
+
                     Spacer()
                     Button(role: .destructive) { showDeleteConfirm = true } label: {
                         Image(systemName: "trash")
@@ -311,24 +270,56 @@ struct CollectionGrid: View {
             }
         }
         .fullScreenCover(item: $viewerIndex) { item in
-            PhotoViewer(assets: assets, library: library, startIndex: item.index)
+            PhotoViewer(assets: assets, library: library, startIndex: item.index, context: viewerContext)
         }
         .confirmationDialog(
-            "Supprimer \(selected.count) élément(s) ?",
+            isRecentlyDeleted ? "Supprimer définitivement \(selected.count) élément(s) ?" : "Supprimer \(selected.count) élément(s) ?",
             isPresented: $showDeleteConfirm,
             titleVisibility: .visible
         ) {
-            Button("Supprimer", role: .destructive) {
-                library.delete(selectedAssets) {
-                    selected.removeAll()
-                    isSelecting = false
+            if isRecentlyDeleted {
+                Button("Supprimer définitivement", role: .destructive) {
+                    deleteForever()
+                }
+            } else {
+                if let album {
+                    Button("Supprimer de l'album") {
+                        removeFromAlbum(album)
+                    }
+                }
+                Button("Supprimer", role: .destructive) {
+                    trashSelected()
                 }
             }
         } message: {
             Text(isRecentlyDeleted
-                 ? "Ces éléments seront définitivement effacés."
-                 : "Ils iront dans « Supprimés récemment » pendant 30 jours.")
+                 ? "Ils seront effacés de ta galerie. iOS te demandera de confirmer."
+                 : TrashStore.deleteMessage)
         }
+        .onAppear {
+            if isRecentlyDeleted { library.purgeExpired() }
+            reload()
+        }
+        .onChange(of: library.changeToken) { _, _ in
+            reload()
+        }
+    }
+
+    private func reload() {
+        let load = loader
+        DispatchQueue.global(qos: .userInitiated).async {
+            let list = load()
+            DispatchQueue.main.async {
+                assets = list
+                let ids = Set(list.map { $0.localIdentifier })
+                selected = selected.filter { ids.contains($0) }
+            }
+        }
+    }
+
+    private func daysLeftText(_ asset: PHAsset) -> String? {
+        guard let days = TrashStore.daysLeft(for: asset.localIdentifier) else { return nil }
+        return "\(days) j"
     }
 
     private func toggle(_ asset: PHAsset) {
@@ -339,10 +330,30 @@ struct CollectionGrid: View {
         }
     }
 
-    private func unhideSelected() {
-        library.unhide(selectedAssets) {
-            selected.removeAll()
-            isSelecting = false
+    private func finishSelection() {
+        selected.removeAll()
+        isSelecting = false
+    }
+
+    private func trashSelected() {
+        library.trash(selectedAssets) { finishSelection() }
+    }
+
+    private func removeFromAlbum(_ album: PHAssetCollection) {
+        library.remove(selectedAssets, from: album) { finishSelection() }
+    }
+
+    private func restoreSelected() {
+        library.restore(selectedAssets) { finishSelection() }
+    }
+
+    private func deleteForever() {
+        library.deletePermanently(selectedAssets) { success in
+            if success { finishSelection() }
         }
+    }
+
+    private func unhideSelected() {
+        library.unhide(selectedAssets) { finishSelection() }
     }
 }

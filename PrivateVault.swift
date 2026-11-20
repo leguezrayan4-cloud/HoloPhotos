@@ -88,6 +88,9 @@ struct VaultView: View {
             }
         }
         .navigationTitle(Vault.name)
+        .onChange(of: library.changeToken) { _, _ in
+            if unlocked { reloadAssets() }
+        }
         .toolbar {
             if unlocked {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -118,7 +121,12 @@ struct VaultView: View {
             Button("Annuler", role: .cancel) {}
         }
         .fullScreenCover(item: $viewerIndex) { item in
-            PhotoViewer(assets: assets, library: library, startIndex: item.index)
+            PhotoViewer(
+                assets: assets,
+                library: library,
+                startIndex: item.index,
+                context: Vault.album().map { ViewerContext.album($0) } ?? .normal
+            )
         }
     }
 

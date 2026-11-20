@@ -6,7 +6,7 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
-    sources: [ContentView.swift, HolophotoApp.swift, MainTabView.swift, PhotoLibrary.swift, ThumbnailView.swift, FullPhotoView.swift, ShareSheet.swift, SettingsView.swift, AIView.swift, OllamaClient.swift, QuotaStore.swift, CollectionsView.swift, PrivateVault.swift, Assets.xcassets]
+    sources: [ContentView.swift, HolophotoApp.swift, MainTabView.swift, PhotoLibrary.swift, ThumbnailView.swift, FullPhotoView.swift, ShareSheet.swift, SettingsView.swift, AIView.swift, OllamaClient.swift, QuotaStore.swift, CollectionsView.swift, PrivateVault.swift, TrashStore.swift, SpeechRecognizer.swift, Assets.xcassets]
     info:
       path: HoloPhotos-Info.plist
       properties:
@@ -15,6 +15,8 @@ targets:
         NSPhotoLibraryUsageDescription: "HoloPhotos a besoin d'accéder à ta galerie pour afficher et ranger tes photos et vidéos."
         NSPhotoLibraryAddUsageDescription: "HoloPhotos enregistre les copies et les nouveaux albums dans ta galerie."
         NSFaceIDUsageDescription: "HoloPhotos utilise Face ID pour ouvrir ton album privé."
+        NSMicrophoneUsageDescription: "HoloPhotos utilise le micro pour dicter tes messages à l'IA."
+        NSSpeechRecognitionUsageDescription: "HoloPhotos transforme ta voix en texte pour écrire à l'IA."
         NSLocalNetworkUsageDescription: "HoloPhotos se connecte à ton PC pour utiliser l'IA locale."
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
