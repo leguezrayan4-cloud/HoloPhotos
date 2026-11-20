@@ -20,6 +20,7 @@ struct ThumbnailView: View {
                 }
             }
             .clipped()
+            .contentShape(Rectangle())
             .overlay(alignment: .bottomLeading) {
                 videoBadge
             }
