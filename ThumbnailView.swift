@@ -3,24 +3,48 @@ import SwiftUI
 
 struct ThumbnailView: View {
     let asset: PHAsset
+    var isSelecting = false
+    var isSelected = false
     @State private var image: UIImage?
 
     var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Color.gray.opacity(0.2)
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Color.gray.opacity(0.2)
+                }
             }
+            .clipped()
+            .overlay(alignment: .bottomTrailing) {
+                badge
+            }
+            .opacity(isSelecting && isSelected ? 0.7 : 1)
+            .onAppear(perform: load)
+    }
+
+    @ViewBuilder
+    private var badge: some View {
+        if isSelecting {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(isSelected ? Color.blue : Color.white)
+                .shadow(radius: 2)
+                .padding(6)
+        } else if asset.isFavorite {
+            Image(systemName: "heart.fill")
+                .foregroundStyle(.white)
+                .shadow(radius: 2)
+                .padding(6)
         }
-        .frame(width: 110, height: 110)
-        .clipped()
-        .onAppear(perform: load)
     }
 
     private func load() {
+        guard image == nil else { return }
         let options = PHImageRequestOptions()
         options.deliveryMode = .opportunistic
         options.resizeMode = .fast
