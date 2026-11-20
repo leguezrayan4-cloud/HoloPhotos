@@ -337,10 +337,6 @@ struct AIView: View {
                 Image(systemName: "ellipsis.circle")
             }
         }
-        ToolbarItemGroup(placement: .keyboard) {
-            Spacer()
-            Button("OK") { inputFocused = false }
-        }
     }
 
     private var modelBar: some View {
@@ -752,7 +748,6 @@ struct AIView: View {
         draft = ""
         voiceBase = ""
         chats.append(ChatMessage(role: "user", content: text), to: convID)
-        quota.registerMessage()
         startGeneration(convID: convID, model: model)
     }
 
@@ -767,7 +762,6 @@ struct AIView: View {
         errorText = nil
         guard let model = preflight() else { return }
         chats.remove(last.id, in: convID)
-        quota.registerMessage()
         startGeneration(convID: convID, model: model)
     }
 
@@ -857,6 +851,9 @@ struct AIView: View {
         streamingID = nil
         generation = nil
         expandedThinking.remove(msgID)
+        if error == nil {
+            quota.registerMessage()
+        }
 
         let message = chats.messages(of: convID).first { $0.id == msgID }
         let isEmpty = (message?.content.isEmpty ?? true) && (message?.thinking ?? "").isEmpty
@@ -919,6 +916,7 @@ struct HistorySheet: View {
     @State private var renameID: UUID?
     @State private var renameText = ""
     @State private var confirmDeleteAll = false
+    @State private var pendingDelete: UUID?
 
     private var filtered: [Conversation] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -985,6 +983,22 @@ struct HistorySheet: View {
                     Button("OK") { dismiss() }
                 }
             }
+            .confirmationDialog(
+                "Supprimer cette conversation ?",
+                isPresented: Binding(
+                    get: { pendingDelete != nil },
+                    set: { if !$0 { pendingDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Supprimer", role: .destructive) {
+                    if let id = pendingDelete { chats.delete(id) }
+                    pendingDelete = nil
+                }
+                Button("Annuler", role: .cancel) { pendingDelete = nil }
+            } message: {
+                Text("Cette action est définitive.")
+            }
             .confirmationDialog("Supprimer toutes les conversations ?", isPresented: $confirmDeleteAll, titleVisibility: .visible) {
                 Button("Tout supprimer", role: .destructive) {
                     chats.deleteAll()
@@ -1041,7 +1055,7 @@ struct HistorySheet: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                chats.delete(conv.id)
+                pendingDelete = conv.id
             } label: {
                 Label("Supprimer", systemImage: "trash")
             }
@@ -1067,7 +1081,7 @@ struct HistorySheet: View {
             Button { chats.togglePin(conv.id) } label: {
                 Label(conv.isPinned ? "Désépingler" : "Épingler", systemImage: conv.isPinned ? "pin.slash" : "pin")
             }
-            Button(role: .destructive) { chats.delete(conv.id) } label: {
+            Button(role: .destructive) { pendingDelete = conv.id } label: {
                 Label("Supprimer", systemImage: "trash")
             }
         }
