@@ -1,3 +1,4 @@
+import AVKit
 import Photos
 import SwiftUI
 
@@ -7,6 +8,7 @@ struct FullPhotoView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var image: UIImage?
+    @State private var player: AVPlayer?
     @State private var isFavorite: Bool
     @State private var showShare = false
     @State private var showInfo = false
@@ -19,24 +21,54 @@ struct FullPhotoView: View {
         _isFavorite = State(initialValue: asset.isFavorite)
     }
 
+    private var isVideo: Bool {
+        asset.mediaType == .video
+    }
+
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-            } else {
-                ProgressView()
-            }
+            content
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        UIPasteboard.general.image = image
+                    } label: {
+                        Label("Copier", systemImage: "doc.on.doc")
+                    }
+                    .disabled(image == nil || isVideo)
+
+                    Button {
+                        library.duplicate([asset]) {}
+                    } label: {
+                        Label("Dupliquer", systemImage: "plus.square.on.square")
+                    }
+                    .disabled(isVideo)
+
+                    Button {
+                        library.hide([asset]) { dismiss() }
+                    } label: {
+                        Label("Masquer", systemImage: "eye.slash")
+                    }
+
+                    Button {
+                        showAlbumPicker = true
+                    } label: {
+                        Label("Ajouter à un album", systemImage: "rectangle.stack.badge.plus")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+            }
+
             ToolbarItemGroup(placement: .bottomBar) {
                 Button { showShare = true } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
-                .disabled(image == nil)
+                .disabled(image == nil || isVideo)
 
                 Spacer()
 
@@ -52,27 +84,10 @@ struct FullPhotoView: View {
 
                 Spacer()
 
-                Menu {
-                    Button { showAlbumPicker = true } label: {
-                        Label("Ajouter à un album", systemImage: "rectangle.stack.badge.plus")
-                    }
-                    Button {
-                        library.duplicate([asset]) {}
-                    } label: {
-                        Label("Dupliquer", systemImage: "plus.square.on.square")
-                    }
-                    Button {
-                        library.hide([asset]) { dismiss() }
-                    } label: {
-                        Label("Masquer", systemImage: "eye.slash")
-                    }
-                    Divider()
-                    Button(role: .destructive) { showDelete = true } label: {
-                        Label("Supprimer", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                Button(role: .destructive) { showDelete = true } label: {
+                    Image(systemName: "trash")
                 }
+                .tint(.red)
             }
         }
         .sheet(isPresented: $showShare) {
@@ -86,14 +101,32 @@ struct FullPhotoView: View {
         .sheet(isPresented: $showAlbumPicker) {
             AlbumPicker(library: library, assets: [asset]) {}
         }
-        .confirmationDialog("Supprimer cette photo ?", isPresented: $showDelete, titleVisibility: .visible) {
+        .confirmationDialog("Supprimer cet élément ?", isPresented: $showDelete, titleVisibility: .visible) {
             Button("Supprimer", role: .destructive) {
                 library.delete([asset]) { dismiss() }
             }
         } message: {
-            Text("Elle ira dans « Supprimés récemment » pendant 30 jours.")
+            Text("Il ira dans « Supprimés récemment » pendant 30 jours.")
         }
         .onAppear(perform: load)
+        .onDisappear { player?.pause() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isVideo {
+            if let player {
+                VideoPlayer(player: player)
+            } else {
+                ProgressView()
+            }
+        } else if let image {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+        } else {
+            ProgressView()
+        }
     }
 
     private func toggleFavorite() {
@@ -103,6 +136,14 @@ struct FullPhotoView: View {
     }
 
     private func load() {
+        if isVideo {
+            loadVideo()
+        } else {
+            loadImage()
+        }
+    }
+
+    private func loadImage() {
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
@@ -119,6 +160,17 @@ struct FullPhotoView: View {
             }
         }
     }
+
+    private func loadVideo() {
+        let options = PHVideoRequestOptions()
+        options.isNetworkAccessAllowed = true
+        PHImageManager.default().requestPlayerItem(forVideo: asset, options: options) { item, _ in
+            guard let item else { return }
+            DispatchQueue.main.async {
+                player = AVPlayer(playerItem: item)
+            }
+        }
+    }
 }
 
 struct PhotoInfoView: View {
@@ -132,6 +184,11 @@ struct PhotoInfoView: View {
                 }
                 LabeledContent("Dimensions") {
                     Text("\(asset.pixelWidth) × \(asset.pixelHeight)")
+                }
+                if asset.mediaType == .video {
+                    LabeledContent("Durée") {
+                        Text(String(format: "%.0f s", asset.duration))
+                    }
                 }
                 if let location = asset.location {
                     LabeledContent("Position") {
