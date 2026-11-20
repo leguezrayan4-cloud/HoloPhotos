@@ -6,11 +6,19 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
-    sources: [ContentView.swift, HolophotoApp.swift, MainTabView.swift, PhotoLibrary.swift, ThumbnailView.swift, FullPhotoView.swift, ShareSheet.swift, SettingsView.swift, AIView.swift]
+    sources: [ContentView.swift, HolophotoApp.swift, MainTabView.swift, PhotoLibrary.swift, ThumbnailView.swift, FullPhotoView.swift, ShareSheet.swift, SettingsView.swift, AIView.swift, OllamaClient.swift, QuotaStore.swift, CollectionsView.swift, PrivateVault.swift]
+    info:
+      path: HoloPhotos-Info.plist
+      properties:
+        CFBundleDisplayName: HoloPhotos
+        UILaunchScreen: {}
+        NSPhotoLibraryUsageDescription: "HoloPhotos a besoin d'accéder à ta galerie pour afficher et ranger tes photos et vidéos."
+        NSPhotoLibraryAddUsageDescription: "HoloPhotos enregistre les copies et les nouveaux albums dans ta galerie."
+        NSFaceIDUsageDescription: "HoloPhotos utilise Face ID pour ouvrir ton album privé."
+        NSLocalNetworkUsageDescription: "HoloPhotos se connecte à ton PC pour utiliser l'IA locale."
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.holophotos.app
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "HoloPhotos a besoin d'accéder à ta galerie pour afficher et ranger tes photos et vidéos."
-        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "HoloPhotos enregistre les copies et les nouveaux albums dans ta galerie."
+        GENERATE_INFOPLIST_FILE: NO
