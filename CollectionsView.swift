@@ -29,7 +29,7 @@ func hiddenAssets() -> [PHAsset] {
 
 func recentlyDeletedAssets() -> [PHAsset] {
     guard let collection = PHAssetCollection.fetchAssetCollections(
-        with: .smartAlbum, subtype: .smartAlbumRecentlyDeleted, options: nil
+        with: .smartAlbum, subtype: PHAssetCollectionSubtype(rawValue: 1_000_000_201)!, options: nil
     ).firstObject else { return [] }
     let options = PHFetchOptions()
     options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
