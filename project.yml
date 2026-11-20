@@ -22,3 +22,24 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.holophotos.app
         GENERATE_INFOPLIST_FILE: NO
+        targets:
+  HoloPhotos:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: 
+      - path: .
+        excludes:
+          - "**/*.yml"
+          - "**/.github"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.holophotos.app
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: HoloPhotos-Info.plist
+      properties:
+        CFBundleDisplayName: HoloPhotos
+        UILaunchScreen: {}
+        # ... le reste de tes propriétés
