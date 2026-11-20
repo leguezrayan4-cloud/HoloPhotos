@@ -5,10 +5,28 @@ private final class ImageCollector {
     var images: [UIImage] = []
 }
 
-final class PhotoLibrary: ObservableObject {
+final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
     @Published var assets: [PHAsset] = []
     @Published var albums: [PHAssetCollection] = []
     @Published var authorized = false
+
+    override init() {
+        super.init()
+        PHPhotoLibrary.shared().register(self)
+    }
+
+    deinit {
+        PHPhotoLibrary.shared().unregisterChangeObserver(self)
+    }
+
+    // Appelé par iOS dès qu'une photo ou vidéo est ajoutée, modifiée ou supprimée
+    func photoLibraryDidChange(_ changeInstance: PHChange) {
+        let autoRefresh = UserDefaults.standard.object(forKey: "autoRefresh") as? Bool ?? true
+        guard autoRefresh else { return }
+        DispatchQueue.main.async {
+            self.reload()
+        }
+    }
 
     func checkAccess() {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -31,8 +49,13 @@ final class PhotoLibrary: ObservableObject {
     func reload() {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.predicate = NSPredicate(
+            format: "mediaType == %d || mediaType == %d",
+            PHAssetMediaType.image.rawValue,
+            PHAssetMediaType.video.rawValue
+        )
         var photos: [PHAsset] = []
-        PHAsset.fetchAssets(with: .image, options: options).enumerateObjects { asset, _, _ in
+        PHAsset.fetchAssets(with: options).enumerateObjects { asset, _, _ in
             photos.append(asset)
         }
         var albums: [PHAssetCollection] = []
@@ -48,13 +71,15 @@ final class PhotoLibrary: ObservableObject {
         }
     }
 
+    // Ne concerne que les photos : les vidéos ne se copient pas dans le presse-papiers ici
     func loadImages(_ assets: [PHAsset], completion: @escaping ([UIImage]) -> Void) {
+        let photosOnly = assets.filter { $0.mediaType == .image }
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
         options.isNetworkAccessAllowed = true
         let collector = ImageCollector()
         let group = DispatchGroup()
-        for asset in assets {
+        for asset in photosOnly {
             group.enter()
             PHImageManager.default().requestImage(
                 for: asset,
@@ -93,6 +118,7 @@ final class PhotoLibrary: ObservableObject {
         }, done: done)
     }
 
+    // Les doublons ne sont faits que pour les photos
     func duplicate(_ assets: [PHAsset], done: @escaping () -> Void) {
         loadImages(assets) { images in
             PHPhotoLibrary.shared().performChanges({
