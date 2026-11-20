@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var selected = Set<String>()
     @State private var showAlbumPicker = false
     @State private var showDeleteConfirm = false
+    @State private var showCollections = false
 
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 2), count: columns)
@@ -53,6 +54,9 @@ struct ContentView: View {
                 finishSelection()
             }
         }
+        .sheet(isPresented: $showCollections) {
+            CollectionsView(library: library)
+        }
         .confirmationDialog(
             "Supprimer \(selected.count) élément(s) ?",
             isPresented: $showDeleteConfirm,
@@ -69,6 +73,13 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if library.authorized {
+            ToolbarItem(placement: .topBarLeading) {
+                if !isSelecting {
+                    Button { showCollections = true } label: {
+                        Image(systemName: "rectangle.stack")
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 if isSelecting {
                     Button { finishSelection() } label: {
