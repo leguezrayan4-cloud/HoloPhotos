@@ -6,11 +6,11 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
-    sources: [ContentView.swift, HolophotoApp.swift, PhotoLibrary.swift, ThumbnailView.swift, FullPhotoView.swift, ShareSheet.swift]
+    sources: [ContentView.swift, HolophotoApp.swift, MainTabView.swift, PhotoLibrary.swift, ThumbnailView.swift, FullPhotoView.swift, ShareSheet.swift, SettingsView.swift, AIView.swift]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.holophotos.app
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "HoloPhotos a besoin d'accéder à ta galerie pour afficher et ranger tes photos."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "HoloPhotos a besoin d'accéder à ta galerie pour afficher et ranger tes photos et vidéos."
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "HoloPhotos enregistre les copies et les nouveaux albums dans ta galerie."
