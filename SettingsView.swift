@@ -52,14 +52,17 @@ struct GeneralSettingsView: View {
 }
 
 struct GridSettingsView: View {
-    @AppStorage("gridSize") private var gridSize = 100
+    @AppStorage("columns") private var columns = 4
 
     var body: some View {
         List {
-            Picker("Taille", selection: $gridSize) {
-                Text("Petite").tag(80)
-                Text("Moyenne").tag(100)
-                Text("Grande").tag(130)
+            Picker("Colonnes", selection: $columns) {
+                Text("1").tag(1)
+                Text("2").tag(2)
+                Text("3").tag(3)
+                Text("4").tag(4)
+                Text("6").tag(6)
+                Text("8").tag(8)
             }
             .pickerStyle(.inline)
         }
