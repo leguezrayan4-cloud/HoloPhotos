@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ThumbnailView: View {
     let asset: PHAsset
+    var targetPixels: CGFloat = 220
     var isSelecting = false
     var isSelected = false
     @State private var image: UIImage?
@@ -70,7 +71,7 @@ struct ThumbnailView: View {
         options.resizeMode = .fast
         PHImageManager.default().requestImage(
             for: asset,
-            targetSize: CGSize(width: 220, height: 220),
+            targetSize: CGSize(width: targetPixels, height: targetPixels),
             contentMode: .aspectFill,
             options: options
         ) { result, _ in
