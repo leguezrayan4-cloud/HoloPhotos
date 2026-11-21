@@ -1,5 +1,8 @@
+import AuthenticationServices
+import CryptoKit
 import FirebaseAuth
 import FirebaseCore
+import GoogleSignIn
 import SwiftUI
 
 enum DeleteOutcome {
@@ -8,7 +11,7 @@ enum DeleteOutcome {
     case failed
 }
 
-// Compte utilisateur (Firebase Auth, e-mail + mot de passe).
+// Compte utilisateur (Firebase Auth, e-mail + mot de passe + Google + Apple).
 // Le compte est optionnel : l'app reste utilisable sans être connecté.
 @MainActor
 final class AuthStore: ObservableObject {
@@ -20,6 +23,9 @@ final class AuthStore: ObservableObject {
     // false tant que GoogleService-Info.plist n'est pas ajouté au projet
     let isConfigured: Bool
     private var handle: AuthStateDidChangeListenerHandle?
+
+    // Nonce utilisé pour la connexion Apple
+    private var currentNonce: String?
 
     init() {
         // FirebaseApp.configure() plante sans le fichier plist : on le vérifie avant
@@ -107,10 +113,109 @@ final class AuthStore: ObservableObject {
     func signOut() {
         do {
             try Auth.auth().signOut()
+            GIDSignIn.sharedInstance.signOut()
             clearMessages()
         } catch {
             errorMessage = Self.message(for: error)
         }
+    }
+
+    // MARK: - Google Sign-In
+
+    func signInWithGoogle() async -> Bool {
+        guard isConfigured else {
+            errorMessage = "Les comptes ne sont pas encore configurés dans cette version de l'app."
+            return false
+        }
+        guard let clientID = FirebaseApp.app()?.options.clientID else {
+            errorMessage = "Configuration Google manquante."
+            return false
+        }
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else {
+            errorMessage = "Impossible d'ouvrir la fenêtre de connexion."
+            return false
+        }
+
+        isBusy = true
+        errorMessage = nil
+        infoMessage = nil
+        defer { isBusy = false }
+
+        do {
+            let config = GIDConfiguration(clientID: clientID)
+            GIDSignIn.sharedInstance.configuration = config
+            let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootVC)
+            guard let idToken = result.user.idToken?.tokenString else {
+                errorMessage = "Token Google introuvable."
+                return false
+            }
+            let credential = GoogleAuthProvider.credential(
+                withIDToken: idToken,
+                accessToken: result.user.accessToken.tokenString
+            )
+            _ = try await Auth.auth().signIn(with: credential)
+            return true
+        } catch {
+            errorMessage = Self.message(for: error)
+            return false
+        }
+    }
+
+    // MARK: - Sign in with Apple
+
+    /// Génère un nonce aléatoire sécurisé et le stocke pour vérification.
+    func prepareAppleSignIn() -> String {
+        let nonce = randomNonce()
+        currentNonce = nonce
+        return sha256(nonce)
+    }
+
+    /// À appeler depuis le completion handler d'ASAuthorizationController.
+    func signInWithApple(credential appleCredential: ASAuthorizationAppleIDCredential) async -> Bool {
+        guard isConfigured else {
+            errorMessage = "Les comptes ne sont pas encore configurés dans cette version de l'app."
+            return false
+        }
+        guard let nonce = currentNonce else {
+            errorMessage = "Connexion Apple non initialisée."
+            return false
+        }
+        guard let appleIDToken = appleCredential.identityToken,
+              let idTokenString = String(data: appleIDToken, encoding: .utf8) else {
+            errorMessage = "Token Apple introuvable."
+            return false
+        }
+
+        isBusy = true
+        errorMessage = nil
+        infoMessage = nil
+        defer { isBusy = false }
+
+        let credential = OAuthProvider.appleCredential(
+            withIDToken: idTokenString,
+            rawNonce: nonce,
+            fullName: appleCredential.fullName
+        )
+        return await run { _ = try await Auth.auth().signIn(with: credential) }
+    }
+
+    // MARK: - Helpers Apple
+
+    private func randomNonce(length: Int = 32) -> String {
+        var randomBytes = [UInt8](repeating: 0, count: length)
+        let errorCode = SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
+        if errorCode != errSecSuccess {
+            fatalError("Unable to generate nonce. SecRandomCopyBytes failed with OSStatus \(errorCode)")
+        }
+        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        return String(randomBytes.map { charset[Int($0) % charset.count] })
+    }
+
+    private func sha256(_ input: String) -> String {
+        let inputData = Data(input.utf8)
+        let hashedData = SHA256.hash(data: inputData)
+        return hashedData.compactMap { String(format: "%02x", $0) }.joined()
     }
 
     func updateName(_ name: String) async {

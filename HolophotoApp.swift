@@ -1,3 +1,4 @@
+import GoogleSignIn
 import SwiftUI
 
 @main
@@ -55,6 +56,9 @@ struct HolophotoApp: App {
                     library.purgeExpired()
                     backup.autoRunIfNeeded()
                 }
+            }
+            .onOpenURL { url in
+                GIDSignIn.sharedInstance.handle(url)
             }
         }
     }

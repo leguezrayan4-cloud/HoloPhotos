@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 // MARK: - Connexion / inscription
@@ -172,6 +173,69 @@ struct AuthView: View {
                     .font(.footnote)
                 }
             }
+
+            Section {
+                // ── Séparateur « ou »
+                HStack {
+                    Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 1)
+                    Text("ou").font(.footnote).foregroundStyle(.secondary)
+                    Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 1)
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+                .padding(.horizontal)
+
+                // ── Bouton Google
+                Button {
+                    Task {
+                        let ok = await auth.signInWithGoogle()
+                        if ok { Haptics.success(); dismiss() }
+                    }
+                } label: {
+                    Label {
+                        Text("Continuer avec Google")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    } icon: {
+                        Image("google-logo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                    }
+                }
+                .buttonStyle(SocialButtonStyle(foreground: .primary, background: Color(.systemBackground), border: Color.secondary.opacity(0.4)))
+                .disabled(auth.isBusy)
+
+                // ── Bouton Apple
+                SignInWithAppleButton(
+                    isSignUp ? .signUp : .signIn,
+                    onRequest: { request in
+                        request.requestedScopes = [.fullName, .email]
+                        request.nonce = auth.prepareAppleSignIn()
+                    },
+                    onCompletion: { result in
+                        Task {
+                            switch result {
+                            case .success(let authorization):
+                                if let appleCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                                    let ok = await auth.signInWithApple(credential: appleCredential)
+                                    if ok { Haptics.success(); dismiss() }
+                                }
+                            case .failure(let error):
+                                // L'utilisateur a annulé → pas d'erreur affichée
+                                let nsError = error as NSError
+                                if nsError.code != ASAuthorizationError.canceled.rawValue {
+                                    auth.errorMessage = error.localizedDescription
+                                }
+                            }
+                        }
+                    }
+                )
+                .signInWithAppleButtonStyle(.whiteOutline)
+                .frame(height: 50)
+                .cornerRadius(10)
+                .disabled(auth.isBusy)
+            }
         }
         .scrollDismissesKeyboard(.interactively)
     }
@@ -199,6 +263,28 @@ struct AuthView: View {
                 dismiss()
             }
         }
+    }
+}
+
+// MARK: - Style bouton social (Google, etc.)
+
+struct SocialButtonStyle: ButtonStyle {
+    var foreground: Color
+    var background: Color
+    var border: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(foreground)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(background)
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(border, lineWidth: 1))
+            )
+            .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 
