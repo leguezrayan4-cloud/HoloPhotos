@@ -818,16 +818,19 @@ struct AIView: View {
             errorText = "Aucun modèle disponible. Renseigne l'adresse de ton PC dans le menu, ou choisis un fournisseur."
             return nil
         }
-        guard choice.hasPrefix("ollama:") else {
-            errorText = "Ce fournisseur (clé API) arrive bientôt. Pour l'instant utilise Automatique ou Ollama sur ton PC."
-            return nil
-        }
         guard quota.remaining > 0 else {
             errorText = "Quota mensuel atteint. Il se remet à zéro le mois prochain."
             return nil
         }
-        let name = String(choice.dropFirst("ollama:".count))
-        return (name == "auto" || name.isEmpty) ? ollamaModel : name
+        if choice.hasPrefix("ollama:") {
+            let name = String(choice.dropFirst("ollama:".count))
+            return (name == "auto" || name.isEmpty) ? ollamaModel : name
+        }
+        guard HoloModels.slug(for: choice) != nil else {
+            errorText = "Ce modèle n'est pas encore relié à ton serveur."
+            return nil
+        }
+        return "server:" + choice
     }
 
     private func send(_ override: String? = nil) {
@@ -836,6 +839,10 @@ struct AIView: View {
         errorText = nil
 
         guard let model = preflight() else { return }
+        if model.hasPrefix("server:"), !pendingImages.isEmpty {
+            errorText = "Les photos ne partent que vers ton PC (Ollama). Retire-les, ou choisis Automatique."
+            return
+        }
 
         if speech.isRecording { speech.stop() }
         if chats.currentID == nil {
@@ -872,6 +879,29 @@ struct AIView: View {
         let placeholder = ChatMessage(role: "assistant", content: "")
         chats.append(placeholder, to: convID)
         let msgID = placeholder.id
+
+        if model.hasPrefix("server:") {
+            let choice = String(model.dropFirst("server:".count))
+            streamingID = msgID
+            phase = .sending
+            let client = HoloServerClient(
+                baseURL: UserDefaults.standard.string(forKey: "holoServerURL") ?? "",
+                secret: UserDefaults.standard.string(forKey: "holoServerSecret") ?? ""
+            )
+            let slug = HoloModels.slug(for: choice) ?? choice
+            let prompt = systemPrompt
+            generation = Task { @MainActor in
+                do {
+                    let reply = try await client.chat(model: slug, messages: history, system: prompt)
+                    chats.update(msgID, in: convID) { $0.content = reply }
+                    endGeneration(convID: convID, msgID: msgID, error: nil)
+                } catch {
+                    errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                    endGeneration(convID: convID, msgID: msgID, error: error)
+                }
+            }
+            return
+        }
 
         streamingID = msgID
         phase = .sending
@@ -1314,6 +1344,8 @@ struct ProviderModels: View {
 struct OllamaSettingsView: View {
     @AppStorage("ollamaHost") private var host = ""
     @AppStorage("ollamaModel") private var model = "llama3.2"
+    @AppStorage("holoServerURL") private var serverURL = ""
+    @AppStorage("holoServerSecret") private var serverSecret = ""
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -1331,6 +1363,20 @@ struct OllamaSettingsView: View {
                     Text("Ton PC")
                 } footer: {
                     Text("Ollama doit tourner sur ton PC et accepter les connexions du réseau. Laisse l'adresse vide pour désactiver ce mode.")
+                }
+
+                Section {
+                    TextField("Adresse du serveur, ex. 192.168.1.40:8787", text: $serverURL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("Secret du serveur", text: $serverSecret)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Serveur HoloPhotos (ChatGPT, Claude, Gemini)")
+                } footer: {
+                    Text("Le serveur tourne sur ton PC et garde ta clé OpenRouter. Le secret doit être le même que celui défini sur ton PC.")
                 }
             }
             .navigationTitle("Serveur Ollama")

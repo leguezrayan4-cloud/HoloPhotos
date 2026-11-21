@@ -42,6 +42,7 @@ targets:
       - DriveClient.swift
       - BackupManager.swift
       - BackupView.swift
+      - HoloServerClient.swift
       - path: GoogleService-Info.plist
         optional: true
     dependencies:
