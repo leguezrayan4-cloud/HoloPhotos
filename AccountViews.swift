@@ -359,6 +359,9 @@ struct AccountView: View {
     @State private var askPassword = false
     @State private var passwordDraft = ""
     @State private var showResetSent = false
+    @State private var showAddPassword = false
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
 
     var body: some View {
         List {
@@ -383,30 +386,46 @@ struct AccountView: View {
                     Label("Modifier le nom", systemImage: "pencil")
                 }
 
-                HStack {
-                    Label(
-                        auth.isEmailVerified ? "E-mail vérifié" : "E-mail non vérifié",
-                        systemImage: auth.isEmailVerified ? "checkmark.seal.fill" : "exclamationmark.circle"
-                    )
-                    .foregroundStyle(auth.isEmailVerified ? .green : .orange)
-                    Spacer()
-                    if !auth.isEmailVerified {
-                        Button("Renvoyer") {
-                            Task { await auth.sendVerification() }
+                if auth.hasPasswordProvider {
+                    HStack {
+                        Label(
+                            auth.isEmailVerified ? "E-mail vérifié" : "E-mail non vérifié",
+                            systemImage: auth.isEmailVerified ? "checkmark.seal.fill" : "exclamationmark.circle"
+                        )
+                        .foregroundStyle(auth.isEmailVerified ? .green : .orange)
+                        Spacer()
+                        if !auth.isEmailVerified {
+                            Button("Renvoyer") {
+                                Task { await auth.sendVerification() }
+                            }
+                            .font(.footnote)
+                            .buttonStyle(.bordered)
                         }
-                        .font(.footnote)
-                        .buttonStyle(.bordered)
                     }
-                }
 
-                Button {
-                    Task {
-                        if await auth.resetPassword(email: auth.email) {
-                            showResetSent = true
+                    Button {
+                        Task {
+                            if await auth.resetPassword(email: auth.email) {
+                                showResetSent = true
+                            }
                         }
+                    } label: {
+                        Label("Changer le mot de passe", systemImage: "key")
                     }
-                } label: {
-                    Label("Changer le mot de passe", systemImage: "key")
+                } else {
+                    Label(
+                        auth.hasGoogleProvider ? "Connecté avec Google" : "Connecté avec Apple",
+                        systemImage: "person.crop.circle"
+                    )
+                    .foregroundStyle(.secondary)
+
+                    Button {
+                        newPassword = ""
+                        confirmPassword = ""
+                        showAddPassword = true
+                    } label: {
+                        Label("Ajouter un mot de passe", systemImage: "key.fill")
+                    }
                 }
             } header: {
                 Text("Profil")
@@ -484,6 +503,31 @@ struct AccountView: View {
         } message: {
             Text("Cette action est irréversible.")
         }
+        .alert("Ajouter un mot de passe", isPresented: $showAddPassword) {
+            SecureField("Mot de passe (6 caractères min.)", text: $newPassword)
+            SecureField("Confirme le mot de passe", text: $confirmPassword)
+            Button("Enregistrer") {
+                let password = newPassword
+                let confirm = confirmPassword
+                newPassword = ""
+                confirmPassword = ""
+                guard password.count >= 6 else {
+                    auth.errorMessage = "Le mot de passe doit contenir au moins 6 caractères."
+                    return
+                }
+                guard password == confirm else {
+                    auth.errorMessage = "Les mots de passe ne correspondent pas."
+                    return
+                }
+                Task { _ = await auth.addPassword(password) }
+            }
+            Button("Annuler", role: .cancel) {
+                newPassword = ""
+                confirmPassword = ""
+            }
+        } message: {
+            Text("Tu pourras ensuite te connecter avec ton adresse e-mail.")
+        }
         .alert("Confirme ton mot de passe", isPresented: $askPassword) {
             SecureField("Mot de passe", text: $passwordDraft)
             Button("Supprimer", role: .destructive) {
@@ -505,6 +549,49 @@ struct AccountView: View {
             askPassword = true
         case .failed:
             break
+        }
+    }
+}
+
+// Pseudo demandé après une première connexion Google ou Apple
+struct NameSetupView: View {
+    @EnvironmentObject private var auth: AuthStore
+    @State private var name = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Ton pseudo", text: $name)
+                        .textInputAutocapitalization(.words)
+                } header: {
+                    Text("Comment tu t'appelles ?")
+                } footer: {
+                    Text("Ce nom s'affichera dans ton compte. Tu pourras le changer plus tard.")
+                }
+
+                if let error = auth.errorMessage {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.footnote)
+                    }
+                }
+            }
+            .navigationTitle("Bienvenue")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Continuer") {
+                        Task { _ = await auth.saveName(name) }
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || auth.isBusy)
+                }
+            }
+            .onAppear {
+                if name.isEmpty { name = auth.user?.displayName ?? "" }
+            }
+            .interactiveDismissDisabled()
         }
     }
 }

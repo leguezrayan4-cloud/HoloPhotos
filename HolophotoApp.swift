@@ -57,6 +57,10 @@ struct HolophotoApp: App {
                     backup.autoRunIfNeeded()
                 }
             }
+            .sheet(isPresented: $auth.needsName) {
+                NameSetupView()
+                    .environmentObject(auth)
+            }
             .onOpenURL { url in
                 GIDSignIn.sharedInstance.handle(url)
             }
