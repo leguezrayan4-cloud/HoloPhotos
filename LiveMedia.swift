@@ -1,5 +1,4 @@
 import Photos
-import PhotosUI
 import SwiftUI
 import UIKit
 import VisionKit
