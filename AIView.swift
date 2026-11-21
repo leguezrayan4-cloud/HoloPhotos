@@ -296,8 +296,9 @@ struct AIView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             Button { showHistory = true } label: {
-                Image(systemName: "clock.arrow.circlepath")
+                Image(systemName: "ellipsis")
             }
+            .accessibilityLabel("Conversations")
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button { newChat() } label: {
@@ -1096,11 +1097,7 @@ struct HistorySheet: View {
     }
 
     private func row(_ conv: Conversation) -> some View {
-        Button {
-            chats.currentID = conv.id
-            dismiss()
-        } label: {
-            HStack(spacing: 10) {
+        HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         if conv.isPinned {
@@ -1122,7 +1119,36 @@ struct HistorySheet: View {
                     Image(systemName: "checkmark")
                         .foregroundStyle(Color.accentColor)
                 }
+            Menu {
+                Button {
+                    startRename(conv)
+                } label: {
+                    Label("Renommer", systemImage: "pencil")
+                }
+                Button {
+                    chats.togglePin(conv.id)
+                } label: {
+                    Label(conv.isPinned ? "Désépingler" : "Épingler", systemImage: conv.isPinned ? "pin.slash" : "pin")
+                }
+                Divider()
+                Button(role: .destructive) {
+                    pendingDelete = conv.id
+                } label: {
+                    Label("Supprimer", systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("Options de la conversation")
+            }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            chats.currentID = conv.id
+            dismiss()
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
