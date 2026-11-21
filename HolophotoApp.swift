@@ -4,6 +4,7 @@ import SwiftUI
 struct HolophotoApp: App {
     @StateObject private var library = PhotoLibrary()
     @StateObject private var auth = AuthStore()
+    @StateObject private var backup = BackupManager()
     @AppStorage("appearance") private var appearance = "system"
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("lockApp") private var lockApp = false
@@ -24,6 +25,7 @@ struct HolophotoApp: App {
                 MainTabView()
                     .environmentObject(library)
                     .environmentObject(auth)
+                    .environmentObject(backup)
 
                 if locked {
                     AppLockView {
@@ -51,6 +53,7 @@ struct HolophotoApp: App {
                 if phase == .active {
                     library.checkAccess()
                     library.purgeExpired()
+                    backup.autoRunIfNeeded()
                 }
             }
         }

@@ -34,6 +34,11 @@ targets:
       - Assets.xcassets
       - AuthStore.swift
       - AccountViews.swift
+      - DriveConfig.swift
+      - DriveAuth.swift
+      - DriveClient.swift
+      - BackupManager.swift
+      - BackupView.swift
       - path: GoogleService-Info.plist
         optional: true
     dependencies:

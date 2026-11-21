@@ -6,7 +6,8 @@ enum AppSettings {
         "appearance", "hapticsEnabled",
         "lockApp", "autoRefresh", "trashRetentionDays",
         "columns", "sortOrder",
-        "aiMode", "aiStyle", "showThinking", "quotaShowRemaining"
+        "aiMode", "aiStyle", "showThinking", "quotaShowRemaining",
+        "backupAuto", "backupWiFiOnly", "backupVideos", "backupQuality"
     ]
 
     static func resetAll() {
@@ -36,6 +37,12 @@ struct SettingsView: View {
                         PhotosSettingsView()
                     } label: {
                         Label("Photos", systemImage: "photo.on.rectangle")
+                    }
+
+                    NavigationLink {
+                        BackupView()
+                    } label: {
+                        Label("Sauvegarde Google Drive", systemImage: "icloud.and.arrow.up")
                     }
 
                     NavigationLink {
