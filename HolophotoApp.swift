@@ -3,16 +3,27 @@ import SwiftUI
 @main
 struct HolophotoApp: App {
     @StateObject private var library = PhotoLibrary()
+    @StateObject private var auth = AuthStore()
+    @AppStorage("appearance") private var appearance = "system"
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("lockApp") private var lockApp = false
     @State private var locked = false
     @AppStorage("onboardingDone") private var onboardingDone = false
+
+    private var colorScheme: ColorScheme? {
+        switch appearance {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
             ZStack {
                 MainTabView()
                     .environmentObject(library)
+                    .environmentObject(auth)
 
                 if locked {
                     AppLockView {
@@ -21,6 +32,7 @@ struct HolophotoApp: App {
                     .transition(.opacity)
                 }
             }
+            .preferredColorScheme(colorScheme)
             .onAppear {
                 locked = lockApp
             }

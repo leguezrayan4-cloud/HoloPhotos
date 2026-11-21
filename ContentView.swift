@@ -216,7 +216,7 @@ struct ContentView: View {
                                 selected.insert(id)
                             }
                             // Retour haptique léger
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            Haptics.medium()
                         }
                         .background(
                             GeometryReader { cellGeo in
@@ -237,7 +237,9 @@ struct ContentView: View {
             .gesture(dragSelectGesture, including: isSelecting ? .all : .none)
         }
         .gesture(pinchGesture)
-        .sensoryFeedback(.selection, trigger: selected.count)
+        .sensoryFeedback(trigger: selected.count) { _, _ in
+            Haptics.enabled ? .selection : nil
+        }
         .refreshable {
             // Pas d'actualisation pendant la sélection
             guard !isSelecting else { return }

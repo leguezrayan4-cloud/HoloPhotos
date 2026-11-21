@@ -1,12 +1,46 @@
 name: HoloPhotos
 options:
   bundleIdPrefix: com.holophotos
+packages:
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: 12.0.0
 targets:
   HoloPhotos:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
-    sources: [ContentView.swift, HolophotoApp.swift, MainTabView.swift, PhotoLibrary.swift, ThumbnailView.swift, FullPhotoView.swift, ShareSheet.swift, SettingsView.swift, AIView.swift, OllamaClient.swift, QuotaStore.swift, CollectionsView.swift, PrivateVault.swift, TrashStore.swift, SpeechRecognizer.swift, AppLock.swift, Haptics.swift, Onboarding.swift, Folders.swift, LiveMedia.swift, Assets.xcassets]
+    sources:
+      - ContentView.swift
+      - HolophotoApp.swift
+      - MainTabView.swift
+      - PhotoLibrary.swift
+      - ThumbnailView.swift
+      - FullPhotoView.swift
+      - ShareSheet.swift
+      - SettingsView.swift
+      - AIView.swift
+      - OllamaClient.swift
+      - QuotaStore.swift
+      - CollectionsView.swift
+      - PrivateVault.swift
+      - TrashStore.swift
+      - SpeechRecognizer.swift
+      - AppLock.swift
+      - Haptics.swift
+      - Onboarding.swift
+      - Folders.swift
+      - LiveMedia.swift
+      - Assets.xcassets
+      - AuthStore.swift
+      - AccountViews.swift
+      - path: GoogleService-Info.plist
+        optional: true
+    dependencies:
+      - package: Firebase
+        product: FirebaseCore
+      - package: Firebase
+        product: FirebaseAuth
     info:
       path: HoloPhotos-Info.plist
       properties:

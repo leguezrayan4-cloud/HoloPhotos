@@ -17,6 +17,8 @@ struct MainTabView: View {
                 .tag(2)
                 .tabItem { Label("Réglages", systemImage: "gearshape") }
         }
-        .sensoryFeedback(.selection, trigger: tab)
+        .sensoryFeedback(trigger: tab) { _, _ in
+            Haptics.enabled ? .selection : nil
+        }
     }
 }

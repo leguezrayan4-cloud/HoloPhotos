@@ -190,6 +190,7 @@ struct AIView: View {
     @AppStorage("ollamaModel") private var ollamaModel = "llama3.2"
     @AppStorage("quotaShowRemaining") private var showRemaining = false
     @AppStorage("showThinking") private var showThinking = true
+    @AppStorage("aiStyle") private var aiStyle = "concise"
     @FocusState private var inputFocused: Bool
 
     @State private var draft = ""
@@ -213,7 +214,10 @@ struct AIView: View {
     @State private var rawBuffer = ""
     @State private var expandedThinking: Set<UUID> = []
 
-    private let systemPrompt = "Tu es l'assistant IA intégré à HoloPhotos, une application de galerie photo. Réponds en français, de façon claire et concise. Tu n'as pas accès aux photos de l'utilisateur, sauf si elles sont décrites dans la conversation."
+    private var systemPrompt: String {
+        let style = aiStyle == "detailed" ? "de façon détaillée et pédagogique" : "de façon claire et concise"
+        return "Tu es l'assistant IA intégré à HoloPhotos, une application de galerie photo. Réponds en français, \(style). Tu n'as pas accès aux photos de l'utilisateur, sauf si elles sont décrites dans la conversation."
+    }
 
     private let suggestions = [
         "Comment bien organiser ma galerie en albums ?",
@@ -652,8 +656,7 @@ struct AIView: View {
 
                 HistorySheet(chats: chats, onClose: { closeHistory() })
                     .frame(maxWidth: 340, maxHeight: .infinity)
-                    .background(Color(.systemBackground))
-                    .ignoresSafeArea(edges: .vertical)
+                    .background(Color(.systemBackground).ignoresSafeArea(edges: .vertical))
                     .shadow(radius: 12)
                     .transition(.move(edge: .leading))
             }

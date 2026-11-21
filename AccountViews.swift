@@ -1,0 +1,381 @@
+import SwiftUI
+
+// MARK: - Connexion / inscription
+
+struct AuthView: View {
+    @EnvironmentObject private var auth: AuthStore
+    @Environment(\.dismiss) private var dismiss
+
+    private enum Mode: String, CaseIterable, Identifiable {
+        case signUp = "Inscription"
+        case signIn = "Connexion"
+        var id: String { rawValue }
+    }
+
+    private enum Field: Hashable {
+        case name, email, password, confirm
+    }
+
+    @State private var mode: Mode = .signUp
+    @State private var name = ""
+    @State private var email = ""
+    @State private var password = ""
+    @State private var confirm = ""
+    @State private var showForgot = false
+    @State private var forgotEmail = ""
+    @FocusState private var focus: Field?
+
+    private var isSignUp: Bool { mode == .signUp }
+
+    private var validationHint: String? {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty, !(trimmed.contains("@") && trimmed.contains(".")) {
+            return "L'adresse e-mail ne semble pas valide."
+        }
+        if isSignUp, !password.isEmpty, password.count < 6 {
+            return "Le mot de passe doit contenir au moins 6 caractères."
+        }
+        if isSignUp, !confirm.isEmpty, confirm != password {
+            return "Les mots de passe ne correspondent pas."
+        }
+        return nil
+    }
+
+    private var canSubmit: Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("@"), trimmed.contains("."), !password.isEmpty else { return false }
+        if isSignUp {
+            return password.count >= 6 && confirm == password
+        }
+        return true
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if auth.isConfigured {
+                    form
+                } else {
+                    notConfigured
+                }
+            }
+            .navigationTitle(isSignUp ? "Créer un compte" : "Se connecter")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Fermer") { dismiss() }
+                }
+            }
+            .alert("Mot de passe oublié", isPresented: $showForgot) {
+                TextField("Adresse e-mail", text: $forgotEmail)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Envoyer") {
+                    Task { _ = await auth.resetPassword(email: forgotEmail) }
+                }
+                Button("Annuler", role: .cancel) {}
+            } message: {
+                Text("Entre ton adresse : tu recevras un lien pour choisir un nouveau mot de passe.")
+            }
+        }
+        .onAppear { auth.clearMessages() }
+    }
+
+    private var form: some View {
+        Form {
+            Section {
+                Picker("Mode", selection: $mode) {
+                    ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+                .onChange(of: mode) { _, _ in auth.clearMessages() }
+            }
+
+            Section {
+                if isSignUp {
+                    TextField("Prénom ou pseudo", text: $name)
+                        .textContentType(.name)
+                        .focused($focus, equals: .name)
+                        .submitLabel(.next)
+                        .onSubmit { focus = .email }
+                }
+                TextField("Adresse e-mail", text: $email)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($focus, equals: .email)
+                    .submitLabel(.next)
+                    .onSubmit { focus = .password }
+                SecureField("Mot de passe", text: $password)
+                    .textContentType(isSignUp ? .newPassword : .password)
+                    .focused($focus, equals: .password)
+                    .submitLabel(isSignUp ? .next : .go)
+                    .onSubmit {
+                        if isSignUp { focus = .confirm } else { submit() }
+                    }
+                if isSignUp {
+                    SecureField("Confirmer le mot de passe", text: $confirm)
+                        .textContentType(.newPassword)
+                        .focused($focus, equals: .confirm)
+                        .submitLabel(.go)
+                        .onSubmit { submit() }
+                }
+            } footer: {
+                if let hint = validationHint {
+                    Text(hint).foregroundStyle(.orange)
+                } else if isSignUp {
+                    Text("Ton compte sert à t'identifier dans l'app. Tes photos restent sur ton téléphone.")
+                }
+            }
+
+            if let error = auth.errorMessage {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .font(.footnote)
+                }
+            }
+            if let info = auth.infoMessage {
+                Section {
+                    Label(info, systemImage: "envelope.fill")
+                        .foregroundStyle(.green)
+                        .font(.footnote)
+                }
+            }
+
+            Section {
+                Button {
+                    submit()
+                } label: {
+                    HStack {
+                        Spacer()
+                        if auth.isBusy {
+                            ProgressView()
+                        } else {
+                            Text(isSignUp ? "Créer mon compte" : "Me connecter")
+                                .font(.headline)
+                        }
+                        Spacer()
+                    }
+                }
+                .disabled(!canSubmit || auth.isBusy)
+
+                if !isSignUp {
+                    Button("Mot de passe oublié ?") {
+                        forgotEmail = email
+                        showForgot = true
+                    }
+                    .font(.footnote)
+                }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private var notConfigured: some View {
+        ContentUnavailableView {
+            Label("Comptes indisponibles", systemImage: "person.crop.circle.badge.exclamationmark")
+        } description: {
+            Text("Firebase n'est pas encore configuré dans cette version. Ajoute le fichier GoogleService-Info.plist au projet, puis recompile l'app.")
+        }
+    }
+
+    private func submit() {
+        guard canSubmit, !auth.isBusy else { return }
+        focus = nil
+        Task {
+            let ok: Bool
+            if isSignUp {
+                ok = await auth.signUp(name: name, email: email, password: password)
+            } else {
+                ok = await auth.signIn(email: email, password: password)
+            }
+            if ok {
+                Haptics.success()
+                dismiss()
+            }
+        }
+    }
+}
+
+// MARK: - Ligne « Compte » dans les Réglages
+
+struct AccountAvatar: View {
+    let initials: String
+    var size: CGFloat = 44
+
+    var body: some View {
+        Text(initials)
+            .font(.system(size: size * 0.4, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(Circle().fill(Color.purple.gradient))
+    }
+}
+
+// MARK: - Gestion du compte
+
+struct AccountView: View {
+    @EnvironmentObject private var auth: AuthStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var showRename = false
+    @State private var nameDraft = ""
+    @State private var confirmSignOut = false
+    @State private var confirmDelete = false
+    @State private var askPassword = false
+    @State private var passwordDraft = ""
+    @State private var showResetSent = false
+
+    var body: some View {
+        List {
+            Section {
+                HStack(spacing: 14) {
+                    AccountAvatar(initials: auth.initials, size: 56)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(auth.displayName).font(.headline)
+                        Text(auth.email)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section {
+                Button {
+                    nameDraft = auth.user?.displayName ?? ""
+                    showRename = true
+                } label: {
+                    Label("Modifier le nom", systemImage: "pencil")
+                }
+
+                HStack {
+                    Label(
+                        auth.isEmailVerified ? "E-mail vérifié" : "E-mail non vérifié",
+                        systemImage: auth.isEmailVerified ? "checkmark.seal.fill" : "exclamationmark.circle"
+                    )
+                    .foregroundStyle(auth.isEmailVerified ? .green : .orange)
+                    Spacer()
+                    if !auth.isEmailVerified {
+                        Button("Renvoyer") {
+                            Task { await auth.sendVerification() }
+                        }
+                        .font(.footnote)
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                Button {
+                    Task {
+                        if await auth.resetPassword(email: auth.email) {
+                            showResetSent = true
+                        }
+                    }
+                } label: {
+                    Label("Changer le mot de passe", systemImage: "key")
+                }
+            } header: {
+                Text("Profil")
+            } footer: {
+                Text("Pour changer ton mot de passe, on t'envoie un lien par e-mail.")
+            }
+
+            if let error = auth.errorMessage {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .font(.footnote)
+                }
+            }
+            if let info = auth.infoMessage {
+                Section {
+                    Label(info, systemImage: "envelope.fill")
+                        .foregroundStyle(.green)
+                        .font(.footnote)
+                }
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    confirmSignOut = true
+                } label: {
+                    Label("Se déconnecter", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    confirmDelete = true
+                } label: {
+                    Label("Supprimer mon compte", systemImage: "trash")
+                }
+            } footer: {
+                Text("Supprime définitivement ton compte. Tes photos et vidéos ne sont pas touchées.")
+            }
+        }
+        .navigationTitle("Compte")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await auth.reload() }
+        .onAppear { auth.clearMessages() }
+        // Quand le compte disparaît (déconnexion ou suppression), on revient aux Réglages
+        .onChange(of: auth.isSignedIn) { _, signedIn in
+            if !signedIn { dismiss() }
+        }
+        .overlay {
+            if auth.isBusy { ProgressView() }
+        }
+        .alert("Modifier le nom", isPresented: $showRename) {
+            TextField("Prénom ou pseudo", text: $nameDraft)
+            Button("Enregistrer") {
+                Task { await auth.updateName(nameDraft) }
+            }
+            Button("Annuler", role: .cancel) {}
+        }
+        .alert("E-mail envoyé", isPresented: $showResetSent) {
+            Button("OK") {}
+        } message: {
+            Text("Vérifie ta boîte mail pour choisir un nouveau mot de passe.")
+        }
+        .confirmationDialog("Se déconnecter ?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+            Button("Se déconnecter", role: .destructive) {
+                auth.signOut()
+            }
+            Button("Annuler", role: .cancel) {}
+        }
+        .confirmationDialog("Supprimer ton compte ?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Supprimer définitivement", role: .destructive) {
+                Task { await delete(password: nil) }
+            }
+            Button("Annuler", role: .cancel) {}
+        } message: {
+            Text("Cette action est irréversible.")
+        }
+        .alert("Confirme ton mot de passe", isPresented: $askPassword) {
+            SecureField("Mot de passe", text: $passwordDraft)
+            Button("Supprimer", role: .destructive) {
+                let password = passwordDraft
+                passwordDraft = ""
+                Task { await delete(password: password) }
+            }
+            Button("Annuler", role: .cancel) { passwordDraft = "" }
+        } message: {
+            Text("Pour supprimer ton compte, saisis à nouveau ton mot de passe.")
+        }
+    }
+
+    private func delete(password: String?) async {
+        switch await auth.deleteAccount(password: password) {
+        case .done:
+            Haptics.success()
+        case .needsPassword:
+            askPassword = true
+        case .failed:
+            break
+        }
+    }
+}

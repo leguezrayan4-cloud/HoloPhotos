@@ -6,7 +6,13 @@ enum Haptics {
     private static var last = Date.distantPast
     private static let minInterval: TimeInterval = 0.3
 
+    // Réglage « Retours haptiques » (activé par défaut)
+    nonisolated static var enabled: Bool {
+        UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool ?? true
+    }
+
     private static func allowed() -> Bool {
+        guard enabled else { return false }
         let now = Date()
         guard now.timeIntervalSince(last) >= minInterval else { return false }
         last = now
