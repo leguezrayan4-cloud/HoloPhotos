@@ -26,6 +26,9 @@ struct AuthView: View {
     @State private var forgotEmail = ""
     @FocusState private var focus: Field?
 
+    // Coordinator Apple Sign-In (doit rester en vie pendant le flow)
+    @State private var appleCoordinator: AppleSignInCoordinator?
+
     private var isSignUp: Bool { mode == .signUp }
 
     private var validationHint: String? {
@@ -207,33 +210,23 @@ struct AuthView: View {
                 .disabled(auth.isBusy)
 
                 // ── Bouton Apple
-                SignInWithAppleButton(
-                    isSignUp ? .signUp : .signIn,
-                    onRequest: { request in
-                        request.requestedScopes = [.fullName, .email]
-                        request.nonce = auth.prepareAppleSignIn()
-                    },
-                    onCompletion: { result in
-                        Task {
-                            switch result {
-                            case .success(let authorization):
-                                if let appleCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                                    let ok = await auth.signInWithApple(credential: appleCredential)
-                                    if ok { Haptics.success(); dismiss() }
-                                }
-                            case .failure(let error):
-                                // L'utilisateur a annulé → pas d'erreur affichée
-                                let nsError = error as NSError
-                                if nsError.code != ASAuthorizationError.canceled.rawValue {
-                                    auth.errorMessage = error.localizedDescription
-                                }
-                            }
-                        }
+                Button {
+                    let coordinator = AppleSignInCoordinator(auth: auth) {
+                        Haptics.success()
+                        dismiss()
                     }
-                )
-                .signInWithAppleButtonStyle(.whiteOutline)
-                .frame(height: 50)
-                .cornerRadius(10)
+                    appleCoordinator = coordinator
+                    coordinator.start()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 18, weight: .medium))
+                        Text("Continuer avec Apple")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(SocialButtonStyle(foreground: .primary, background: Color(.systemBackground), border: Color.secondary.opacity(0.4)))
                 .disabled(auth.isBusy)
             }
         }
@@ -262,6 +255,56 @@ struct AuthView: View {
                 Haptics.success()
                 dismiss()
             }
+        }
+    }
+}
+
+// MARK: - Apple Sign-In Coordinator
+
+@MainActor
+final class AppleSignInCoordinator: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    private let auth: AuthStore
+    private let onSuccess: () -> Void
+
+    init(auth: AuthStore, onSuccess: @escaping () -> Void) {
+        self.auth = auth
+        self.onSuccess = onSuccess
+    }
+
+    func start() {
+        let hashedNonce = auth.prepareAppleSignIn()
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        request.requestedScopes = [.fullName, .email]
+        request.nonce = hashedNonce
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self
+        controller.presentationContextProvider = self
+        controller.performRequests()
+    }
+
+    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow } ?? UIWindow()
+    }
+
+    nonisolated func authorizationController(controller: ASAuthorizationController,
+                                             didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else { return }
+        Task { @MainActor in
+            let ok = await auth.signInWithApple(credential: credential)
+            if ok { onSuccess() }
+        }
+    }
+
+    nonisolated func authorizationController(controller: ASAuthorizationController,
+                                             didCompleteWithError error: Error) {
+        let nsError = error as NSError
+        guard nsError.code != ASAuthorizationError.canceled.rawValue else { return }
+        Task { @MainActor in
+            auth.errorMessage = error.localizedDescription
         }
     }
 }

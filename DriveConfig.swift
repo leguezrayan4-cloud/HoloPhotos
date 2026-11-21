@@ -4,7 +4,7 @@ import Foundation
 // Colle ici l'ID client OAuth de type « iOS » créé dans Google Cloud Console
 // (il ressemble à 123456789-abcdef.apps.googleusercontent.com).
 enum DriveConfig {
-    static let clientID = ""
+    static let clientID = "130682847333-tnmm6kliji31mcvspcitnu3ibhnulv98.apps.googleusercontent.com"
 
     // drive.file : l'app ne voit que les fichiers qu'elle a elle-même créés
     static let scope = "https://www.googleapis.com/auth/drive.file email"

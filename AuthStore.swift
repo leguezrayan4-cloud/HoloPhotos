@@ -127,8 +127,11 @@ final class AuthStore: ObservableObject {
             errorMessage = "Les comptes ne sont pas encore configurés dans cette version de l'app."
             return false
         }
-        guard let clientID = FirebaseApp.app()?.options.clientID else {
-            errorMessage = "Configuration Google manquante."
+        // On lit CLIENT_ID directement dans GoogleService-Info.plist
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let plist = NSDictionary(contentsOfFile: path),
+              let clientID = plist["CLIENT_ID"] as? String else {
+            errorMessage = "Configuration Google manquante (CLIENT_ID introuvable dans GoogleService-Info.plist)."
             return false
         }
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
