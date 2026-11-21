@@ -11,6 +11,8 @@ struct HolophotoApp: App {
     @AppStorage("lockApp") private var lockApp = false
     @State private var locked = false
     @AppStorage("onboardingDone") private var onboardingDone = false
+    @AppStorage("offeredDriveFor") private var offeredDriveFor = ""
+    @State private var offerDrive = false
 
     private var colorScheme: ColorScheme? {
         switch appearance {
@@ -60,6 +62,22 @@ struct HolophotoApp: App {
             .sheet(isPresented: $auth.needsName) {
                 NameSetupView()
                     .environmentObject(auth)
+            }
+            .alert("Connecter Google Drive ?", isPresented: $offerDrive) {
+                Button("Connecter") {
+                    Task { await backup.auth.signIn() }
+                }
+                Button("Plus tard", role: .cancel) {}
+            } message: {
+                Text("Pour sauvegarder tes photos sur Google Drive. Tu peux le faire plus tard dans Réglages.")
+            }
+            .onChange(of: auth.isSignedIn) { _, signedIn in
+                // Proposé une fois par compte, seulement si Drive n'est pas déjà connecté
+                guard signedIn, !backup.auth.isSignedIn, let uid = auth.user?.uid else { return }
+                if offeredDriveFor != uid {
+                    offeredDriveFor = uid
+                    offerDrive = true
+                }
             }
             .onOpenURL { url in
                 GIDSignIn.sharedInstance.handle(url)

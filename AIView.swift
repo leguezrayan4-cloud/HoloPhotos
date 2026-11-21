@@ -186,8 +186,8 @@ struct AIView: View {
     @StateObject private var quota = QuotaStore()
     @StateObject private var speech = SpeechRecognizer()
     @AppStorage("modelChoice") private var modelChoice = "auto"
-    @AppStorage("ollamaHost") private var ollamaHost = ""
-    @AppStorage("ollamaModel") private var ollamaModel = "llama3.2"
+    private var ollamaHost: String { ServerConfig.ollamaHost }
+    private var ollamaModel: String { ServerConfig.ollamaModel }
     @AppStorage("quotaShowRemaining") private var showRemaining = false
     @AppStorage("showThinking") private var showThinking = true
     @AppStorage("aiStyle") private var aiStyle = "concise"
@@ -884,10 +884,7 @@ struct AIView: View {
             let choice = String(model.dropFirst("server:".count))
             streamingID = msgID
             phase = .sending
-            let client = HoloServerClient(
-                baseURL: UserDefaults.standard.string(forKey: "holoServerURL") ?? "",
-                secret: UserDefaults.standard.string(forKey: "holoServerSecret") ?? ""
-            )
+            let client = HoloServerClient(baseURL: ServerConfig.holoURL, secret: ServerConfig.holoSecret)
             let slug = HoloModels.slug(for: choice) ?? choice
             let prompt = systemPrompt
             generation = Task { @MainActor in
@@ -1342,44 +1339,29 @@ struct ProviderModels: View {
 }
 
 struct OllamaSettingsView: View {
-    @AppStorage("ollamaHost") private var host = ""
-    @AppStorage("ollamaModel") private var model = "llama3.2"
-    @AppStorage("holoServerURL") private var serverURL = ""
-    @AppStorage("holoServerSecret") private var serverSecret = ""
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("192.168.1.20:11434", text: $host)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    TextField("Nom du modèle", text: $model)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    LabeledContent("Adresse", value: ServerConfig.ollamaHost)
+                    LabeledContent("Modèle", value: ServerConfig.ollamaModel)
                 } header: {
-                    Text("Ton PC")
+                    Text("Ollama (ton PC)")
                 } footer: {
-                    Text("Ollama doit tourner sur ton PC et accepter les connexions du réseau. Laisse l'adresse vide pour désactiver ce mode.")
+                    Text("Adresse fixe de l'app. Ollama fonctionne sur le réseau local, quand ton PC est allumé.")
                 }
 
                 Section {
-                    TextField("Adresse du serveur, ex. 192.168.1.40:8787", text: $serverURL)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("Secret du serveur", text: $serverSecret)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    LabeledContent("Adresse", value: ServerConfig.holoURL)
                 } header: {
-                    Text("Serveur HoloPhotos (ChatGPT, Claude, Gemini)")
+                    Text("Serveur HoloPhotos (Claude, ChatGPT, Gemini)")
                 } footer: {
-                    Text("Le serveur tourne sur ton PC et garde ta clé OpenRouter. Le secret doit être le même que celui défini sur ton PC.")
+                    Text("Adresse et secret fixés dans l'app. Ta clé API reste sur ton PC.")
                 }
             }
-            .navigationTitle("Serveur Ollama")
+            .navigationTitle("Serveurs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

@@ -43,6 +43,7 @@ targets:
       - BackupManager.swift
       - BackupView.swift
       - HoloServerClient.swift
+      - ServerConfig.swift
       - path: GoogleService-Info.plist
         optional: true
     dependencies:
@@ -74,4 +75,3 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.holophotos.app
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        CODE_SIGN_ENTITLEMENTS: HoloPhotos.entitlements

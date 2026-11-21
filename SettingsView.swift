@@ -236,8 +236,8 @@ struct AISettingsView: View {
     @AppStorage("aiStyle") private var aiStyle = "concise"
     @AppStorage("quotaShowRemaining") private var showRemaining = false
     @AppStorage("showThinking") private var showThinking = true
-    @AppStorage("ollamaHost") private var host = ""
-    @AppStorage("ollamaModel") private var model = "llama3.2"
+    private var host: String { ServerConfig.ollamaHost }
+    private var model: String { ServerConfig.ollamaModel }
 
     @State private var testing = false
     @State private var testResult: (ok: Bool, text: String)?
@@ -245,13 +245,8 @@ struct AISettingsView: View {
     var body: some View {
         List {
             Section {
-                TextField("192.168.1.20:11434", text: $host)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField("Nom du modèle", text: $model)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                LabeledContent("Adresse", value: host)
+                LabeledContent("Modèle", value: model)
                 Button {
                     Task { await testConnection() }
                 } label: {

@@ -221,50 +221,6 @@ final class AuthStore: ObservableObject {
         try await current.reauthenticate(with: credential)
     }
 
-    // MARK: - Apple
-
-    /// Génère un nonce aléatoire sécurisé et le stocke pour vérification.
-    func prepareAppleSignIn() -> String {
-        let nonce = randomNonce()
-        currentNonce = nonce
-        return sha256(nonce)
-    }
-
-    /// À appeler depuis le completion handler d'ASAuthorizationController.
-    func signInWithApple(credential appleCredential: ASAuthorizationAppleIDCredential) async -> Bool {
-        guard isConfigured else {
-            errorMessage = "Les comptes ne sont pas encore configurés dans cette version de l'app."
-            return false
-        }
-        guard let nonce = currentNonce else {
-            errorMessage = "Connexion Apple non initialisée."
-            return false
-        }
-        guard let appleIDToken = appleCredential.identityToken,
-              let idTokenString = String(data: appleIDToken, encoding: .utf8) else {
-            errorMessage = "Token Apple introuvable."
-            return false
-        }
-        let credential = OAuthProvider.appleCredential(
-            withIDToken: idTokenString,
-            rawNonce: nonce,
-            fullName: appleCredential.fullName
-        )
-        // Apple ne renvoie l'e-mail que la première fois : sans lui, pas de contrôle de doublon
-        let mail = appleCredential.email
-        do {
-            isBusy = true
-            errorMessage = nil
-            infoMessage = nil
-            defer { isBusy = false }
-            try await connect(with: credential, email: mail)
-            return true
-        } catch {
-            errorMessage = Self.message(for: error)
-            return false
-        }
-    }
-
     // MARK: - Liaison des comptes
 
     // Connecte avec un credential Google/Apple, en évitant de créer un second compte pour le même e-mail
