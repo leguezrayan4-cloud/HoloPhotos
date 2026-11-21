@@ -155,7 +155,7 @@ final class AuthStore: ObservableObject {
             try await user.delete()
             return .done
         } catch {
-            let code = AuthErrorCode.Code(rawValue: (error as NSError).code)
+            let code = AuthErrorCode(rawValue: (error as NSError).code)
             if code == .requiresRecentLogin && password == nil {
                 return .needsPassword
             }
@@ -187,7 +187,7 @@ final class AuthStore: ObservableObject {
     // Messages d'erreur Firebase traduits
     static func message(for error: Error) -> String {
         let nsError = error as NSError
-        guard let code = AuthErrorCode.Code(rawValue: nsError.code) else {
+        guard let code = AuthErrorCode(rawValue: nsError.code) else {
             return "Une erreur est survenue. Réessaie dans un instant."
         }
         switch code {
