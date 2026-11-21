@@ -266,8 +266,8 @@ struct AIView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showHistory) {
-                HistorySheet(chats: chats)
+            .overlay {
+                historyDrawer
             }
             .sheet(isPresented: $showModels) {
                 ModelPicker(selection: $modelChoice)
@@ -641,6 +641,31 @@ struct AIView: View {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    @ViewBuilder
+    private var historyDrawer: some View {
+        if showHistory {
+            ZStack(alignment: .leading) {
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea()
+                    .onTapGesture { closeHistory() }
+                    .transition(.opacity)
+
+                HistorySheet(chats: chats, onClose: { closeHistory() })
+                    .frame(maxWidth: 340, maxHeight: .infinity)
+                    .background(Color(.systemBackground))
+                    .ignoresSafeArea(edges: .vertical)
+                    .shadow(radius: 12)
+                    .transition(.move(edge: .leading))
+            }
+        }
+    }
+
+    private func closeHistory() {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showHistory = false
+        }
+    }
+
     private var previewStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -691,6 +716,8 @@ struct AIView: View {
                 }
                 .accessibilityLabel("Joindre des photos")
                 .onChange(of: pickerItems) { _, items in
+                    // Ignore le changement provoqué par la remise à zéro de la sélection
+                    guard !items.isEmpty else { return }
                     Task {
                         var loaded: [String] = []
                         var previews: [UIImage] = []
@@ -983,7 +1010,16 @@ struct QuotaRing: View {
 
 struct HistorySheet: View {
     @ObservedObject var chats: ChatStore
+    var onClose: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+
+    private func closePanel() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
+    }
     @State private var search = ""
     @State private var renameID: UUID?
     @State private var renameText = ""
@@ -1048,11 +1084,11 @@ struct HistorySheet: View {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         chats.newConversation()
-                        dismiss()
+                        closePanel()
                     } label: {
                         Image(systemName: "square.and.pencil")
                     }
-                    Button("OK") { dismiss() }
+                    Button("OK") { closePanel() }
                 }
             }
             .confirmationDialog(
@@ -1148,7 +1184,7 @@ struct HistorySheet: View {
         .contentShape(Rectangle())
         .onTapGesture {
             chats.currentID = conv.id
-            dismiss()
+            closePanel()
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
