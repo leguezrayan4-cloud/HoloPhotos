@@ -273,12 +273,58 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
                 request.creationDate = asset.creationDate
                 request.location = asset.location
             }
+        }) { _, _ in
+            // Enregistrer une copie : l'original n'est jamais supprimé
+            self.reload()
+            DispatchQueue.main.async(execute: done)
+        }
+    }
+
+    // Enregistrer une modification sur la photo elle-même, comme dans Photos (pas de suppression de l'original)
+    func applyEdit(_ image: UIImage, to asset: PHAsset, done: @escaping (Bool) -> Void) {
+        guard let jpeg = image.jpegData(compressionQuality: 0.95) else {
+            DispatchQueue.main.async { done(false) }
+            return
+        }
+        let options = PHContentEditingInputRequestOptions()
+        options.canHandleAdjustmentData = { _ in true }
+        asset.requestContentEditingInput(with: options) { input, _ in
+            guard let input else {
+                DispatchQueue.main.async { done(false) }
+                return
+            }
+            let output = PHContentEditingOutput(contentEditingInput: input)
+            do {
+                try jpeg.write(to: output.renderedContentURL, options: .atomic)
+            } catch {
+                DispatchQueue.main.async { done(false) }
+                return
+            }
+            output.adjustmentData = PHAdjustmentData(
+                formatIdentifier: "com.holophotos.edit",
+                formatVersion: "1.0",
+                data: Data("edit".utf8)
+            )
+            PHPhotoLibrary.shared().performChanges({
+                let request = PHAssetChangeRequest(for: asset)
+                request.contentEditingOutput = output
+            }) { success, _ in
+                DispatchQueue.main.async {
+                    self.reload()
+                    done(success)
+                }
+            }
+        }
+    }
+
+    // Suppression d'une photo depuis la vue : rend le résultat réel (accepté ou refusé par iOS)
+    func trashAsset(_ asset: PHAsset, done: @escaping (Bool) -> Void) {
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetChangeRequest.deleteAssets([asset] as NSArray)
         }) { success, _ in
-            if success, let asset {
-                self.trash([asset], done: done)
-            } else {
+            DispatchQueue.main.async {
                 self.reload()
-                DispatchQueue.main.async(execute: done)
+                done(success)
             }
         }
     }

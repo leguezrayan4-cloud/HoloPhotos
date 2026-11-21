@@ -22,6 +22,10 @@ struct CollectionsView: View {
     @State private var albumToRename: PHAssetCollection?
     @State private var albumToDelete: PHAssetCollection?
     @State private var renameText = ""
+    @State private var albumToMove: PHAssetCollection?
+    @State private var showMove = false
+    @State private var showNewFolder = false
+    @State private var newFolderName = ""
 
     var body: some View {
         NavigationStack {
@@ -86,32 +90,63 @@ struct CollectionsView: View {
                     }
                 }
 
-                Section("Albums") {
-                    ForEach(library.albums, id: \.localIdentifier) { album in
-                        NavigationLink {
-                            AlbumDetailView(album: album, library: library)
+                Section {
+                    ForEach(Folders.topLevel(), id: \.localIdentifier) { collection in
+                        if let folder = collection as? PHCollectionList {
+                            NavigationLink {
+                                FolderView(folder: folder, library: library)
+                            } label: {
+                                HStack {
+                                    Label(folder.localizedTitle ?? "Dossier", systemImage: "folder")
+                                    Spacer()
+                                    Text("\(Folders.albums(in: folder).count)")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        } else if let album = collection as? PHAssetCollection {
+                            NavigationLink {
+                                AlbumDetailView(album: album, library: library)
+                            } label: {
+                                HStack {
+                                    Label(album.localizedTitle ?? "Album", systemImage: "rectangle.stack")
+                                    Spacer()
+                                    Text("\(PHAsset.fetchAssets(in: album, options: nil).count)")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    albumToDelete = album
+                                } label: {
+                                    Label("Supprimer", systemImage: "trash")
+                                }
+                                Button {
+                                    renameText = album.localizedTitle ?? ""
+                                    albumToRename = album
+                                } label: {
+                                    Label("Renommer", systemImage: "pencil")
+                                }
+                                .tint(.orange)
+                                Button {
+                                    albumToMove = album
+                                    showMove = true
+                                } label: {
+                                    Label("Ranger", systemImage: "folder")
+                                }
+                                .tint(.blue)
+                            }
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Albums")
+                        Spacer()
+                        Button {
+                            showNewFolder = true
                         } label: {
-                            HStack {
-                                Label(album.localizedTitle ?? "Album", systemImage: "rectangle.stack")
-                                Spacer()
-                                Text("\(PHAsset.fetchAssets(in: album, options: nil).count)")
-                                    .foregroundStyle(.secondary)
-                            }
+                            Image(systemName: "folder.badge.plus")
                         }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                albumToDelete = album
-                            } label: {
-                                Label("Supprimer", systemImage: "trash")
-                            }
-                            Button {
-                                renameText = album.localizedTitle ?? ""
-                                albumToRename = album
-                            } label: {
-                                Label("Renommer", systemImage: "pencil")
-                            }
-                            .tint(.orange)
-                        }
+                        .accessibilityLabel("Nouveau dossier")
                     }
                 }
 
@@ -143,6 +178,16 @@ struct CollectionsView: View {
                 Button("Annuler", role: .cancel) { albumToDelete = nil }
             } message: {
                 Text("Les photos restent dans ta galerie.")
+            }
+            .alert("Nouveau dossier", isPresented: $showNewFolder) {
+                TextField("Nom du dossier", text: $newFolderName)
+                Button("Créer") { Folders.create(named: newFolderName) {} }
+                Button("Annuler", role: .cancel) {}
+            }
+            .sheet(isPresented: $showMove) {
+                if let album = albumToMove {
+                    MoveAlbumSheet(album: album) {}
+                }
             }
             .navigationTitle("Collections")
             .navigationBarTitleDisplayMode(.inline)

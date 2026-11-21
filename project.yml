@@ -6,7 +6,7 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "17.0"
-    sources: [ContentView.swift, HolophotoApp.swift, MainTabView.swift, PhotoLibrary.swift, ThumbnailView.swift, FullPhotoView.swift, ShareSheet.swift, SettingsView.swift, AIView.swift, OllamaClient.swift, QuotaStore.swift, CollectionsView.swift, PrivateVault.swift, TrashStore.swift, SpeechRecognizer.swift, AppLock.swift, Haptics.swift, Onboarding.swift, Assets.xcassets]
+    sources: [ContentView.swift, HolophotoApp.swift, MainTabView.swift, PhotoLibrary.swift, ThumbnailView.swift, FullPhotoView.swift, ShareSheet.swift, SettingsView.swift, AIView.swift, OllamaClient.swift, QuotaStore.swift, CollectionsView.swift, PrivateVault.swift, TrashStore.swift, SpeechRecognizer.swift, AppLock.swift, Haptics.swift, Onboarding.swift, Folders.swift, LiveMedia.swift, Assets.xcassets]
     info:
       path: HoloPhotos-Info.plist
       properties:

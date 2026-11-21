@@ -127,7 +127,7 @@ struct PhotoViewer: View {
             if let asset = currentAsset {
                 PhotoEditView(asset: asset, library: library) { saved in
                     showEdit = false
-                    if saved { removeFromItems(asset) }
+                    _ = saved
                 }
             }
         }
@@ -299,8 +299,9 @@ struct PhotoViewer: View {
     private func trashCurrent() {
         Haptics.medium()
         guard let asset = currentAsset else { return }
-        library.trash([asset]) {}
-        removeFromItems(asset)
+        library.trashAsset(asset) { ok in
+            if ok { removeFromItems(asset) }
+        }
     }
 
     private func removeFromAlbumCurrent(_ album: PHAssetCollection) {
@@ -378,6 +379,8 @@ struct PhotoPage: View {
     var onZoomChange: (Bool) -> Void = { _ in }
     @State private var image: UIImage?
     @State private var player: AVPlayer?
+    @State private var livePhoto: PHLivePhoto?
+    @State private var playTrigger = 0
     @State private var zoom: CGFloat = 1
     @State private var offset: CGSize = .zero
     @State private var lastOffset: CGSize = .zero
@@ -407,11 +410,15 @@ struct PhotoPage: View {
 
     private func photoView(_ image: UIImage) -> some View {
         GeometryReader { geo in
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(width: geo.size.width, height: geo.size.height)
-                .scaleEffect(min(max(zoom * pinch, 1), 5))
+            Group {
+                if let livePhoto {
+                    LivePhotoRepresentable(livePhoto: livePhoto, playTrigger: playTrigger)
+                } else {
+                    LiveTextImageView(image: image)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .scaleEffect(min(max(zoom * pinch, 1), 5))
                 .offset(offset)
                 .gesture(
                     MagnificationGesture()
@@ -442,6 +449,11 @@ struct PhotoPage: View {
                             lastOffset = offset
                         }
                 )
+                .onLongPressGesture(minimumDuration: 0.3) {
+                    if livePhoto != nil {
+                        playTrigger += 1
+                    }
+                }
                 .onTapGesture(count: 2) {
                     withAnimation(.spring()) {
                         if zoom > 1 {
@@ -475,6 +487,21 @@ struct PhotoPage: View {
             }
         } else {
             guard image == nil else { return }
+            if asset.mediaSubtypes.contains(.photoLive) {
+                let liveOptions = PHLivePhotoRequestOptions()
+                liveOptions.deliveryMode = .highQualityFormat
+                liveOptions.isNetworkAccessAllowed = true
+                PHImageManager.default().requestLivePhoto(
+                    for: asset,
+                    targetSize: CGSize(width: 2048, height: 2048),
+                    contentMode: .aspectFit,
+                    options: liveOptions
+                ) { live, _ in
+                    if let live {
+                        DispatchQueue.main.async { livePhoto = live }
+                    }
+                }
+            }
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat
             options.isNetworkAccessAllowed = true
@@ -659,10 +686,12 @@ struct PhotoEditView: View {
                     saving = false
                     return
                 }
-                library.saveEditedImage(final, replacing: asset) {
+                library.applyEdit(final, to: asset) { ok in
                     saving = false
-                    dismiss()
-                    onDone(true)
+                    if ok {
+                        dismiss()
+                        onDone(true)
+                    }
                 }
             }
         }

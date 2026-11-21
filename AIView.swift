@@ -195,6 +195,7 @@ struct AIView: View {
     @State private var draft = ""
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var pendingImages: [String] = []
+    @State private var pendingPreviews: [UIImage] = []
     @State private var voiceBase = ""
     @State private var errorText: String?
     @State private var showHistory = false
@@ -639,17 +640,51 @@ struct AIView: View {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var previewStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(pendingPreviews.enumerated()), id: \.offset) { index, image in
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 56, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(alignment: .topTrailing) {
+                            Button {
+                                removePending(index)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.white, .black.opacity(0.6))
+                            }
+                            .accessibilityLabel("Retirer la photo")
+                            .offset(x: 6, y: -6)
+                        }
+                }
+            }
+            .padding(.horizontal)
+        }
+        .frame(height: 64)
+    }
+
+    private func removePending(_ index: Int) {
+        guard pendingPreviews.indices.contains(index) else { return }
+        pendingPreviews.remove(at: index)
+        if pendingImages.indices.contains(index) {
+            pendingImages.remove(at: index)
+        }
+    }
+
     private var inputBar: some View {
+        VStack(spacing: 6) {
+            if !pendingPreviews.isEmpty {
+                previewStrip
+            }
         HStack(alignment: .bottom, spacing: 8) {
             quotaChip
 
             HStack(alignment: .bottom, spacing: 6) {
-                TextField(speech.isRecording ? "Je t'écoute…" : "Écris un message", text: $draft, axis: .vertical)
-                    .lineLimit(1...5)
-                    .focused($inputFocused)
-
-                PhotosPicker(selection: $pickerItems, maxSelectionCount: 3, matching: .images) {
-                    Image(systemName: pendingImages.isEmpty ? "paperclip" : "paperclip.circle.fill")
+                PhotosPicker(selection: $pickerItems, maxSelectionCount: 20, matching: .images) {
+                    Image(systemName: pendingImages.isEmpty ? "plus.circle" : "plus.circle.fill")
                         .font(.system(size: 20))
                         .foregroundStyle(pendingImages.isEmpty ? Color.secondary : Color.accentColor)
                 }
@@ -657,15 +692,24 @@ struct AIView: View {
                 .onChange(of: pickerItems) { _, items in
                     Task {
                         var loaded: [String] = []
+                        var previews: [UIImage] = []
                         for item in items {
                             if let data = try? await item.loadTransferable(type: Data.self) {
                                 loaded.append(data.base64EncodedString())
+                                if let image = UIImage(data: data) {
+                                    previews.append(image)
+                                }
                             }
                         }
                         pendingImages = loaded
+                        pendingPreviews = previews
                         pickerItems = []
                     }
                 }
+
+                TextField(speech.isRecording ? "Je t'écoute…" : "Écris un message", text: $draft, axis: .vertical)
+                    .lineLimit(1...5)
+                    .focused($inputFocused)
 
                 Button { toggleVoice() } label: {
                     Image(systemName: speech.isRecording ? "mic.fill" : "mic")
@@ -696,6 +740,7 @@ struct AIView: View {
         .padding(.horizontal)
         .padding(.vertical, 8)
         .background(.bar)
+        }
     }
 
     // MARK: - Choix du modèle
@@ -771,6 +816,7 @@ struct AIView: View {
         voiceBase = ""
         let images = pendingImages
         pendingImages = []
+        pendingPreviews = []
         chats.append(ChatMessage(role: "user", content: text), to: convID)
         Haptics.light()
         startGeneration(convID: convID, model: model, images: images)

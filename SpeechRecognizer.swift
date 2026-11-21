@@ -54,6 +54,7 @@ final class SpeechRecognizer: ObservableObject {
 
             let newRequest = SFSpeechAudioBufferRecognitionRequest()
             newRequest.shouldReportPartialResults = true
+            newRequest.addsPunctuation = true
             request = newRequest
 
             let input = audioEngine.inputNode
