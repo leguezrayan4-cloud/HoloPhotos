@@ -108,7 +108,7 @@ struct VaultView: View {
                             Label("Verrouiller", systemImage: "lock")
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: "ellipsis.circle").accessibilityLabel("Plus d’options")
                     }
                 }
             }

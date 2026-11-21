@@ -23,6 +23,8 @@ struct PhotoViewer: View {
     @State private var showInfo = false
     @State private var showAlbumPicker = false
     @State private var showDelete = false
+    @State private var slideshowOn = false
+    @State private var showShareOptions = false
     @State private var showEdit = false
     @Environment(\.dismiss) private var dismiss
 
@@ -70,7 +72,7 @@ struct PhotoViewer: View {
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button { dismiss() } label: {
-                            Image(systemName: "chevron.backward")
+                            Image(systemName: "chevron.backward").accessibilityLabel("Retour")
                         }
                     }
                     if !isTrash {
@@ -78,13 +80,35 @@ struct PhotoViewer: View {
                             moreMenu
                         }
                     }
-                    ToolbarItemGroup(placement: .bottomBar) {
-                        bottomButtons
+                    if isTrash {
+                        ToolbarItemGroup(placement: .bottomBar) {
+                            restoreButton
+                        }
+                        ToolbarItem(placement: .bottomBar) {
+                            trashButton
+                        }
+                    } else {
+                        ToolbarItem(placement: .bottomBar) {
+                            shareButton
+                        }
+                        ToolbarItemGroup(placement: .bottomBar) {
+                            favoriteButton
+                            infoButton
+                            editButton
+                        }
+                        ToolbarItem(placement: .bottomBar) {
+                            trashButton
+                        }
                     }
                 }
         }
         .onAppear {
             favoriteIDs = Set(items.filter { $0.isFavorite }.map { $0.localIdentifier })
+        }
+        .confirmationDialog("Partager", isPresented: $showShareOptions, titleVisibility: .visible) {
+            Button("Photo originale") { prepareShare(optimized: false) }
+            Button("Version optimisée (plus légère)") { prepareShare(optimized: true) }
+            Button("Annuler", role: .cancel) {}
         }
         .sheet(isPresented: $showShare) {
             ShareSheet(items: shareItems)
@@ -136,6 +160,16 @@ struct PhotoViewer: View {
         .onChange(of: currentID) { _, _ in
             isZoomed = false
         }
+        .onReceive(Timer.publish(every: 3.5, on: .main, in: .common).autoconnect()) { _ in
+            advanceSlideshow()
+        }
+    }
+
+    private func advanceSlideshow() {
+        guard slideshowOn, !isZoomed, items.count > 1 else { return }
+        let index = items.firstIndex { $0.localIdentifier == currentID } ?? 0
+        let next = (index + 1) % items.count
+        currentID = items[next].localIdentifier
     }
 
     private var moreMenu: some View {
@@ -154,6 +188,12 @@ struct PhotoViewer: View {
                 Label("Ajouter à un album", systemImage: "rectangle.stack.badge.plus")
             }
 
+            Button { slideshowOn.toggle() } label: {
+                Label(slideshowOn ? "Arrêter le diaporama" : "Diaporama",
+                      systemImage: slideshowOn ? "stop.fill" : "play.fill")
+            }
+            .disabled(items.count < 2)
+
             if isHiddenContext {
                 Button { unhideCurrent() } label: {
                     Label("Afficher", systemImage: "eye")
@@ -164,53 +204,54 @@ struct PhotoViewer: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: "ellipsis.circle").accessibilityLabel("Plus d’options")
         }
     }
 
-    @ViewBuilder
-    private var bottomButtons: some View {
-        if isTrash {
-            Button { restoreCurrent() } label: {
-                Label("Restaurer", systemImage: "arrow.uturn.backward")
-            }
-            Spacer()
-            Button(role: .destructive) { showDelete = true } label: {
-                Image(systemName: "trash")
-            }
-            .tint(.red)
-        } else {
-            Button { prepareShare() } label: {
-                Image(systemName: "square.and.arrow.up")
-            }
-            .disabled(!isPhoto)
-
-            Spacer()
-
-            Button { toggleFavorite() } label: {
-                Image(systemName: isFavorite ? "heart.fill" : "heart")
-            }
-
-            Spacer()
-
-            Button { showInfo = true } label: {
-                Image(systemName: "info.circle")
-            }
-
-            Spacer()
-
-            Button { showEdit = true } label: {
-                Image(systemName: "slider.horizontal.3")
-            }
-            .disabled(!isPhoto)
-
-            Spacer()
-
-            Button(role: .destructive) { showDelete = true } label: {
-                Image(systemName: "trash")
-            }
-            .tint(.red)
+    private var restoreButton: some View {
+        Button { restoreCurrent() } label: {
+            Label("Restaurer", systemImage: "arrow.uturn.backward")
         }
+    }
+
+    private var shareButton: some View {
+        Button { showShareOptions = true } label: {
+            Image(systemName: "square.and.arrow.up").accessibilityLabel("Partager")
+        }
+        .disabled(!isPhoto)
+    }
+
+    private var favoriteButton: some View {
+        Button { toggleFavorite() } label: {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+        }
+        .accessibilityLabel(isFavorite ? "Retirer des favoris" : "Ajouter aux favoris")
+    }
+
+    private var infoButton: some View {
+        Button { showInfo = true } label: {
+            Image(systemName: "info.circle").accessibilityLabel("Infos")
+        }
+    }
+
+    private var editButton: some View {
+        Button { showEdit = true } label: {
+            Image(systemName: "slider.horizontal.3").accessibilityLabel("Retoucher")
+        }
+        .disabled(!isPhoto)
+    }
+
+    private var trashButton: some View {
+        Button(role: .destructive) {
+            if isTrash {
+                showDelete = true
+            } else {
+                trashCurrent()
+            }
+        } label: {
+            Image(systemName: "trash").accessibilityLabel("Supprimer")
+        }
+        .tint(.red)
     }
 
     // MARK: - Suppression
@@ -223,7 +264,7 @@ struct PhotoViewer: View {
         if isTrash {
             return "Cet élément sera effacé de ta galerie. iOS te demandera de confirmer."
         }
-        return TrashStore.deleteMessage
+        return "Elle sera déplacée dans « Supprimés récemment » de Photos."
     }
 
     @ViewBuilder
@@ -256,6 +297,7 @@ struct PhotoViewer: View {
     }
 
     private func trashCurrent() {
+        Haptics.medium()
         guard let asset = currentAsset else { return }
         library.trash([asset]) {}
         removeFromItems(asset)
@@ -283,6 +325,7 @@ struct PhotoViewer: View {
     // MARK: - Autres actions
 
     private func toggleFavorite() {
+        Haptics.light()
         guard let asset = currentAsset else { return }
         let newValue = !isFavorite
         if newValue {
@@ -293,10 +336,13 @@ struct PhotoViewer: View {
         library.setFavorite(asset, newValue)
     }
 
-    private func prepareShare() {
+    private func prepareShare(optimized: Bool = false) {
         guard let asset = currentAsset else { return }
         library.loadImages([asset]) { images in
-            shareItems = images
+            // Version optimisée : JPEG compressé, plus léger à envoyer
+            shareItems = optimized
+                ? images.map { image in image.jpegData(compressionQuality: 0.7).flatMap { UIImage(data: $0) } ?? image }
+                : images
             showShare = true
         }
     }

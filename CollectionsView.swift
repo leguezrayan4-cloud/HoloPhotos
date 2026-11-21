@@ -1,3 +1,4 @@
+import UIKit
 import Photos
 import SwiftUI
 
@@ -18,6 +19,9 @@ func smartAssets(_ subtype: PHAssetCollectionSubtype) -> [PHAsset] {
 struct CollectionsView: View {
     @ObservedObject var library: PhotoLibrary
     @Environment(\.dismiss) private var dismiss
+    @State private var albumToRename: PHAssetCollection?
+    @State private var albumToDelete: PHAssetCollection?
+    @State private var renameText = ""
 
     var body: some View {
         NavigationStack {
@@ -72,10 +76,13 @@ struct CollectionsView: View {
                         Label("Masqués", systemImage: "eye.slash")
                     }
 
-                    NavigationLink {
-                        CollectionGrid(title: "Supprimés récemment", library: library, isRecentlyDeleted: true) { PhotoLibrary.trashedAssets() }
+                    Button {
+                        // Ouvre directement l'app Photos d'Apple, qui affiche « Supprimés récemment »
+                        if let url = URL(string: "photos-redirect://") {
+                            UIApplication.shared.open(url)
+                        }
                     } label: {
-                        Label("Supprimés récemment", systemImage: "trash")
+                        Label("Supprimés récemment (dans Photos)", systemImage: "trash")
                     }
                 }
 
@@ -91,6 +98,20 @@ struct CollectionsView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                albumToDelete = album
+                            } label: {
+                                Label("Supprimer", systemImage: "trash")
+                            }
+                            Button {
+                                renameText = album.localizedTitle ?? ""
+                                albumToRename = album
+                            } label: {
+                                Label("Renommer", systemImage: "pencil")
+                            }
+                            .tint(.orange)
+                        }
                     }
                 }
 
@@ -101,6 +122,27 @@ struct CollectionsView: View {
                         Label(Vault.name, systemImage: "lock.fill")
                     }
                 }
+            }
+            .alert("Renommer l'album", isPresented: Binding(
+                get: { albumToRename != nil },
+                set: { if !$0 { albumToRename = nil } }
+            )) {
+                TextField("Nom", text: $renameText)
+                Button("Enregistrer") { renameAlbum() }
+                Button("Annuler", role: .cancel) { albumToRename = nil }
+            }
+            .confirmationDialog(
+                "Supprimer cet album ?",
+                isPresented: Binding(
+                    get: { albumToDelete != nil },
+                    set: { if !$0 { albumToDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Supprimer l'album", role: .destructive) { deleteAlbum() }
+                Button("Annuler", role: .cancel) { albumToDelete = nil }
+            } message: {
+                Text("Les photos restent dans ta galerie.")
             }
             .navigationTitle("Collections")
             .navigationBarTitleDisplayMode(.inline)
@@ -185,7 +227,7 @@ struct CollectionGrid: View {
     var body: some View {
         ScrollView {
             if isRecentlyDeleted {
-                Text(TrashStore.footer)
+                Text("Les photos supprimées sont conservées 30 jours dans « Supprimés récemment » de l'app Photos d'Apple.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -262,7 +304,7 @@ struct CollectionGrid: View {
 
                     Spacer()
                     Button(role: .destructive) { showDeleteConfirm = true } label: {
-                        Image(systemName: "trash")
+                        Image(systemName: "trash").accessibilityLabel("Supprimer")
                     }
                     .tint(.red)
                     .disabled(selected.isEmpty)
@@ -294,7 +336,7 @@ struct CollectionGrid: View {
         } message: {
             Text(isRecentlyDeleted
                  ? "Ils seront effacés de ta galerie. iOS te demandera de confirmer."
-                 : TrashStore.deleteMessage)
+                 : "Elles seront déplacées dans « Supprimés récemment » de Photos.")
         }
         .onAppear {
             if isRecentlyDeleted { library.purgeExpired() }
@@ -355,5 +397,29 @@ struct CollectionGrid: View {
 
     private func unhideSelected() {
         library.unhide(selectedAssets) { finishSelection() }
+    }
+}
+
+extension CollectionsView {
+    fileprivate func renameAlbum() {
+        guard let album = albumToRename else { return }
+        let title = renameText.trimmingCharacters(in: .whitespaces)
+        albumToRename = nil
+        guard !title.isEmpty else { return }
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetCollectionChangeRequest(for: album)?.title = title
+        }) { _, _ in
+            library.reload()
+        }
+    }
+
+    fileprivate func deleteAlbum() {
+        guard let album = albumToDelete else { return }
+        albumToDelete = nil
+        PHPhotoLibrary.shared().performChanges({
+            PHAssetCollectionChangeRequest.deleteAssetCollections([album] as NSArray)
+        }) { _, _ in
+            library.reload()
+        }
     }
 }

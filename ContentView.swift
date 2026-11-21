@@ -9,6 +9,7 @@ struct ViewerItem: Identifiable {
 struct ContentView: View {
     @EnvironmentObject private var library: PhotoLibrary
     @AppStorage("columns") private var columns = 4
+    @AppStorage("sortOrder") private var sortOrder = "newest"
     @State private var pinchStart: Int?
     @State private var viewer: ViewerItem?
     @State private var isSelecting = false
@@ -48,6 +49,7 @@ struct ContentView: View {
         }
         .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
         .onAppear { library.checkAccess() }
+        .onChange(of: sortOrder) { _, _ in library.reload() }
         .onChange(of: library.changeToken) { _, _ in
             let ids = Set(library.assets.map { $0.localIdentifier })
             selected = selected.filter { ids.contains($0) }
@@ -79,14 +81,27 @@ struct ContentView: View {
             ToolbarItem(placement: .topBarLeading) {
                 if !isSelecting {
                     Button { showCollections = true } label: {
-                        Image(systemName: "rectangle.stack")
+                        Image(systemName: "rectangle.stack").accessibilityLabel("Collections")
+                    }
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                if !isSelecting {
+                    Menu {
+                        Picker("Trier", selection: $sortOrder) {
+                            Text("Plus récentes d'abord").tag("newest")
+                            Text("Plus anciennes d'abord").tag("oldest")
+                            Text("Modifiées récemment").tag("modified")
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down").accessibilityLabel("Trier")
                     }
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 if isSelecting {
                     Button { finishSelection() } label: {
-                        Image(systemName: "xmark")
+                        Image(systemName: "xmark").accessibilityLabel("Fermer")
                     }
                 } else {
                     Button("Sélectionner") { isSelecting = true }
@@ -96,22 +111,22 @@ struct ContentView: View {
         if isSelecting {
             ToolbarItemGroup(placement: .bottomBar) {
                 Button { copySelected() } label: {
-                    Image(systemName: "doc.on.doc")
+                    Image(systemName: "doc.on.doc").accessibilityLabel("Copier")
                 }
                 .disabled(selected.isEmpty)
 
                 Button { duplicateSelected() } label: {
-                    Image(systemName: "plus.square.on.square")
+                    Image(systemName: "plus.square.on.square").accessibilityLabel("Dupliquer")
                 }
                 .disabled(selected.isEmpty)
 
                 Button { hideSelected() } label: {
-                    Image(systemName: "eye.slash")
+                    Image(systemName: "eye.slash").accessibilityLabel("Masquer")
                 }
                 .disabled(selected.isEmpty)
 
                 Button { showAlbumPicker = true } label: {
-                    Image(systemName: "rectangle.stack.badge.plus")
+                    Image(systemName: "rectangle.stack.badge.plus").accessibilityLabel("Ajouter à un album")
                 }
                 .disabled(selected.isEmpty)
 
@@ -122,7 +137,7 @@ struct ContentView: View {
                         trashBubbleVisible = true
                     }
                 } label: {
-                    Image(systemName: "trash")
+                    Image(systemName: "trash").accessibilityLabel("Supprimer")
                 }
                 .tint(.red)
                 .disabled(selected.isEmpty)
@@ -143,6 +158,7 @@ struct ContentView: View {
 
                 Button {
                     withAnimation { trashBubbleVisible = false }
+                    Haptics.medium()
                     library.trash(selectedAssets) { finishSelection() }
                 } label: {
                     Text("Supprimer")
@@ -221,6 +237,7 @@ struct ContentView: View {
             .gesture(dragSelectGesture, including: isSelecting ? .all : .none)
         }
         .gesture(pinchGesture)
+        .sensoryFeedback(.selection, trigger: selected.count)
         .refreshable {
             // Pas d'actualisation pendant la sélection
             guard !isSelecting else { return }

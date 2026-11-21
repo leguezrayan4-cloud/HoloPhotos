@@ -37,6 +37,7 @@ struct OllamaClient {
     @MainActor
     func chat(
         messages: [ChatMessage],
+        images: [String] = [],
         system: String?,
         think: Bool,
         onEvent: (OllamaEvent) -> Void
@@ -46,12 +47,17 @@ struct OllamaClient {
         if !base.hasPrefix("http") { base = "http://" + base }
         guard let url = URL(string: base + "/api/chat") else { throw OllamaError.badHost }
 
-        var payload: [[String: String]] = []
+        var payload: [[String: Any]] = []
         if let system {
             payload.append(["role": "system", "content": system])
         }
-        for message in messages {
-            payload.append(["role": message.role, "content": message.content])
+        for (index, message) in messages.enumerated() {
+            var entry: [String: Any] = ["role": message.role, "content": message.content]
+            // Les photos ne sont jointes qu'au dernier message utilisateur, et seulement envoyées à Ollama
+            if index == messages.count - 1, message.role == "user", !images.isEmpty {
+                entry["images"] = images
+            }
+            payload.append(entry)
         }
 
         var body: [String: Any] = [

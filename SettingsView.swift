@@ -33,10 +33,17 @@ struct SettingsView: View {
 
 struct GeneralSettingsView: View {
     @AppStorage("autoRefresh") private var autoRefresh = true
+    @AppStorage("lockApp") private var lockApp = false
     @AppStorage("trashRetentionDays") private var retention = 30
 
     var body: some View {
         List {
+            Section {
+                Toggle("Verrouiller HoloPhotos", isOn: $lockApp)
+            } footer: {
+                Text("L'app demande Face ID ou le code du téléphone à chaque ouverture et après être restée en arrière-plan.")
+            }
+
             Section {
                 Toggle("Mise à jour automatique", isOn: $autoRefresh)
             } footer: {

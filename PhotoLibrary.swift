@@ -58,6 +58,15 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
 
     // MARK: - Chargement
 
+    // Ordre choisi par l'utilisateur (menu de tri de la grille)
+    static var sortDescriptors: [NSSortDescriptor] {
+        switch UserDefaults.standard.string(forKey: "sortOrder") ?? "newest" {
+        case "oldest": return [NSSortDescriptor(key: "creationDate", ascending: true)]
+        case "modified": return [NSSortDescriptor(key: "modificationDate", ascending: false)]
+        default: return [NSSortDescriptor(key: "creationDate", ascending: false)]
+        }
+    }
+
     func reload() {
         if Thread.isMainThread {
             startReload()
@@ -71,7 +80,7 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
         let generation = reloadGeneration
         DispatchQueue.global(qos: .userInitiated).async {
             let options = PHFetchOptions()
-            options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+            options.sortDescriptors = PhotoLibrary.sortDescriptors
             options.predicate = NSPredicate(
                 format: "mediaType == %d || mediaType == %d",
                 PHAssetMediaType.image.rawValue,
@@ -99,7 +108,7 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
 
     static func fetchAssets(in album: PHAssetCollection) -> [PHAsset] {
         let options = PHFetchOptions()
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.sortDescriptors = PhotoLibrary.sortDescriptors
         var list: [PHAsset] = []
         PHAsset.fetchAssets(in: album, options: options).enumerateObjects { asset, _, _ in
             list.append(asset)
@@ -111,7 +120,7 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
     private static func fetchHiddenAssets() -> [PHAsset] {
         let options = PHFetchOptions()
         options.includeHiddenAssets = true
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.sortDescriptors = PhotoLibrary.sortDescriptors
         options.predicate = NSPredicate(
             format: "mediaType == %d || mediaType == %d",
             PHAssetMediaType.image.rawValue,
@@ -125,13 +134,12 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
     }
 
     static func hiddenAssets() -> [PHAsset] {
-        let trashed = TrashStore.ids
-        return fetchHiddenAssets().filter { !trashed.contains($0.localIdentifier) }
+        fetchHiddenAssets()
     }
 
+    // Géré par Photos : accessible seulement dans l'app Photos d'Apple
     static func trashedAssets() -> [PHAsset] {
-        let trashed = TrashStore.ids
-        return fetchHiddenAssets().filter { trashed.contains($0.localIdentifier) }
+        []
     }
 
     func loadImages(_ assets: [PHAsset], completion: @escaping ([UIImage]) -> Void) {
@@ -186,63 +194,33 @@ final class PhotoLibrary: NSObject, ObservableObject, PHPhotoLibraryChangeObserv
         }, done: done)
     }
 
-    // « Supprimer » : envoie dans la corbeille de l'app (masqué + daté)
+    // « Supprimer » : iOS affiche sa propre confirmation, puis l'élément va dans « Supprimés récemment » de Photos
     func trash(_ assets: [PHAsset], done: @escaping () -> Void) {
-        let ids = assets.map { $0.localIdentifier }
-        TrashStore.add(ids)
         PHPhotoLibrary.shared().performChanges({
-            for asset in assets {
-                PHAssetChangeRequest(for: asset).isHidden = true
-            }
-        }) { success, _ in
-            if !success { TrashStore.remove(ids) }
+            PHAssetChangeRequest.deleteAssets(assets as NSArray)
+        }) { _, _ in
             self.reload()
             DispatchQueue.main.async(execute: done)
         }
     }
 
+    // Les éléments sont gérés par Photos : on ne restaure que les éléments masqués
     func restore(_ assets: [PHAsset], done: @escaping () -> Void) {
-        let ids = assets.map { $0.localIdentifier }
-        PHPhotoLibrary.shared().performChanges({
-            for asset in assets {
-                PHAssetChangeRequest(for: asset).isHidden = false
-            }
-        }) { success, _ in
-            if success { TrashStore.remove(ids) }
-            self.reload()
-            DispatchQueue.main.async(execute: done)
-        }
+        unhide(assets, done: done)
     }
 
-    // Suppression réelle : iOS demande une confirmation, puis l'élément passe dans « Supprimés récemment » de Photos
+    // Suppression définitive : iOS demande confirmation
     func deletePermanently(_ assets: [PHAsset], done: @escaping (Bool) -> Void) {
-        let ids = assets.map { $0.localIdentifier }
         PHPhotoLibrary.shared().performChanges({
             PHAssetChangeRequest.deleteAssets(assets as NSArray)
         }) { success, _ in
-            if success { TrashStore.remove(ids) }
             self.reload()
             DispatchQueue.main.async { done(success) }
         }
     }
 
-    // Efface définitivement les éléments dont le délai est dépassé
-    func purgeExpired() {
-        guard authorized else { return }
-        let expired = Set(TrashStore.expiredIDs())
-        guard !expired.isEmpty else { return }
-        DispatchQueue.global(qos: .utility).async {
-            let found = Self.fetchHiddenAssets().filter { expired.contains($0.localIdentifier) }
-            let foundIDs = Set(found.map { $0.localIdentifier })
-            let orphans = Array(expired.subtracting(foundIDs))
-            DispatchQueue.main.async {
-                TrashStore.remove(orphans)
-                if !found.isEmpty {
-                    self.deletePermanently(found) { _ in }
-                }
-            }
-        }
-    }
+    // Plus de corbeille interne : rien à purger
+    func purgeExpired() {}
 
     func remove(_ assets: [PHAsset], from album: PHAssetCollection, done: @escaping () -> Void) {
         apply({

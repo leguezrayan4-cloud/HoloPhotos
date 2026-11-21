@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct ChatMessage: Codable, Identifiable, Equatable {
@@ -192,6 +193,8 @@ struct AIView: View {
     @FocusState private var inputFocused: Bool
 
     @State private var draft = ""
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var pendingImages: [String] = []
     @State private var voiceBase = ""
     @State private var errorText: String?
     @State private var showHistory = false
@@ -334,7 +337,7 @@ struct AIView: View {
                     Label("Serveur Ollama", systemImage: "desktopcomputer")
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: "ellipsis.circle").accessibilityLabel("Plus d’options")
             }
         }
     }
@@ -485,7 +488,7 @@ struct AIView: View {
     private func actionRow(_ message: ChatMessage) -> some View {
         HStack(spacing: 18) {
             Button { UIPasteboard.general.string = message.content } label: {
-                Image(systemName: "doc.on.doc")
+                Image(systemName: "doc.on.doc").accessibilityLabel("Copier")
             }
             if message.id == messagesList.last?.id {
                 Button { regenerate() } label: {
@@ -645,6 +648,25 @@ struct AIView: View {
                     .lineLimit(1...5)
                     .focused($inputFocused)
 
+                PhotosPicker(selection: $pickerItems, maxSelectionCount: 3, matching: .images) {
+                    Image(systemName: pendingImages.isEmpty ? "paperclip" : "paperclip.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(pendingImages.isEmpty ? Color.secondary : Color.accentColor)
+                }
+                .accessibilityLabel("Joindre des photos")
+                .onChange(of: pickerItems) { _, items in
+                    Task {
+                        var loaded: [String] = []
+                        for item in items {
+                            if let data = try? await item.loadTransferable(type: Data.self) {
+                                loaded.append(data.base64EncodedString())
+                            }
+                        }
+                        pendingImages = loaded
+                        pickerItems = []
+                    }
+                }
+
                 Button { toggleVoice() } label: {
                     Image(systemName: speech.isRecording ? "mic.fill" : "mic")
                         .font(.system(size: 20))
@@ -660,12 +682,12 @@ struct AIView: View {
 
             if isGenerating {
                 Button { stopGeneration() } label: {
-                    Image(systemName: "stop.circle.fill")
+                    Image(systemName: "stop.circle.fill").accessibilityLabel("Arrêter la réponse")
                         .font(.system(size: 34))
                 }
             } else {
                 Button { send() } label: {
-                    Image(systemName: "arrow.up.circle.fill")
+                    Image(systemName: "arrow.up.circle.fill").accessibilityLabel("Envoyer")
                         .font(.system(size: 34))
                 }
                 .disabled(!canSend)
@@ -747,8 +769,11 @@ struct AIView: View {
 
         draft = ""
         voiceBase = ""
+        let images = pendingImages
+        pendingImages = []
         chats.append(ChatMessage(role: "user", content: text), to: convID)
-        startGeneration(convID: convID, model: model)
+        Haptics.light()
+        startGeneration(convID: convID, model: model, images: images)
     }
 
     private func retry() {
@@ -765,7 +790,7 @@ struct AIView: View {
         startGeneration(convID: convID, model: model)
     }
 
-    private func startGeneration(convID: UUID, model: String) {
+    private func startGeneration(convID: UUID, model: String, images: [String] = []) {
         let history = chats.messages(of: convID).filter { !$0.content.isEmpty }
         let placeholder = ChatMessage(role: "assistant", content: "")
         chats.append(placeholder, to: convID)
@@ -783,12 +808,12 @@ struct AIView: View {
         generation = Task { @MainActor in
             do {
                 do {
-                    try await client.chat(messages: history, system: prompt, think: wantThink) { event in
+                    try await client.chat(messages: history, images: images, system: prompt, think: wantThink) { event in
                         handle(event, convID: convID, msgID: msgID)
                     }
                 } catch OllamaError.thinkingUnsupported {
                     rawBuffer = ""
-                    try await client.chat(messages: history, system: prompt, think: false) { event in
+                    try await client.chat(messages: history, images: images, system: prompt, think: false) { event in
                         handle(event, convID: convID, msgID: msgID)
                     }
                 }
@@ -970,7 +995,7 @@ struct HistorySheet: View {
                         }
                         .disabled(chats.conversations.isEmpty)
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: "ellipsis.circle").accessibilityLabel("Plus d’options")
                     }
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
